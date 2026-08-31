@@ -5,19 +5,27 @@ Wraps the official Nexus Mods REST API v1 (https://api.nexusmods.com) as MCP
 tools: validate key, browse games, inspect mods/files, get download links,
 search by MD5, and manage tracked mods / endorsements.
 
-Authentication: reads NEXUS_API_KEY from the environment (personal API key
-created at https://www.nexusmods.com/users/myaccount?tab=api%20access).
+Authentication: NEXUS_API_KEY (personal API key, https://www.nexusmods.com/users/myaccount?tab=api%20access)
+and optionally OAuth2 (NEXUS_OAUTH_CLIENT_ID [+ NEXUS_OAUTH_CLIENT_SECRET], registered by emailing
+support@nexusmods.com) which unlocks user-context mutations like updateModDirectDownloadEnabled.
+OAuth tokens are persisted to ~/.nexus-mcp/oauth-tokens.json (override with NEXUS_OAUTH_TOKEN_FILE)
+and auto-refreshed; Bearer auth takes precedence over apikey when logged in.
 
 Docs: https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import re
+import secrets
 import sys
 import time
+import urllib.parse
+from pathlib import Path
 from typing import Any, Literal, Optional
 
 import httpx
@@ -55,20 +63,12 @@ _client: Optional[httpx.AsyncClient] = None
 
 
 def _get_client() -> httpx.AsyncClient:
-    """Lazily create the shared async HTTP client with auth headers."""
+    """Lazily create the shared async HTTP client. Auth headers are applied per-request."""
     global _client
     if _client is None:
-        api_key = os.environ.get("NEXUS_API_KEY", "").strip()
-        if not api_key:
-            raise NexusApiError(
-                "NEXUS_API_KEY environment variable is not set. "
-                "Create a personal API key at https://www.nexusmods.com/users/myaccount?tab=api%20access "
-                "and set it in the MCP server 'environment' config."
-            )
         _client = httpx.AsyncClient(
             base_url=API_BASE,
             headers={
-                "apikey": api_key,
                 "User-Agent": f"{APP_NAME}/{APP_VERSION} ({sys.platform}; Python httpx)",
                 "Application-Name": APP_NAME,
                 "Application-Version": APP_VERSION,
@@ -77,6 +77,127 @@ def _get_client() -> httpx.AsyncClient:
             timeout=30.0,
         )
     return _client
+
+
+# ---------------------------------------------------------------------------
+# OAuth2 (optional) - Bearer auth unlocks user-context mutations; apikey fallback
+# ---------------------------------------------------------------------------
+
+OAUTH_AUTHORIZE_URL = "https://users.nexusmods.com/oauth/authorize"
+OAUTH_TOKEN_URL = "https://users.nexusmods.com/oauth/token"
+OAUTH_REFRESH_MARGIN = 60  # refresh this many seconds before expiry
+
+_oauth_pending: Optional[dict[str, str]] = None
+
+
+def _oauth_client_id() -> str:
+    return os.environ.get("NEXUS_OAUTH_CLIENT_ID", "").strip()
+
+
+def _oauth_client_secret() -> str:
+    return os.environ.get("NEXUS_OAUTH_CLIENT_SECRET", "").strip()
+
+
+def _oauth_redirect_uri() -> str:
+    return os.environ.get("NEXUS_OAUTH_REDIRECT_URI", "").strip() or "http://localhost/callback"
+
+
+def _oauth_token_file() -> Path:
+    return Path(os.environ.get("NEXUS_OAUTH_TOKEN_FILE", "")).expanduser() if os.environ.get("NEXUS_OAUTH_TOKEN_FILE") else Path.home() / ".nexus-mcp" / "oauth-tokens.json"
+
+
+def _load_oauth_tokens() -> Optional[dict[str, Any]]:
+    try:
+        return json.loads(_oauth_token_file().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _save_oauth_tokens(tokens: dict[str, Any]) -> None:
+    path = _oauth_token_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
+
+
+def _clear_oauth_tokens() -> None:
+    try:
+        _oauth_token_file().unlink()
+    except OSError:
+        pass
+
+
+def _pkce_pair() -> tuple[str, str]:
+    """PKCE S256 pair (verifier >= 43 chars per RFC 7636; S256 required for public apps)."""
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return verifier, challenge
+
+
+async def _oauth_token_request(form: dict[str, str]) -> dict[str, Any]:
+    """POST to the token endpoint (form-encoded); returns the parsed JSON token reply."""
+    async with httpx.AsyncClient(timeout=30.0) as hc:
+        response = await hc.post(OAUTH_TOKEN_URL, data=form, headers={"Accept": "application/json"})
+    try:
+        body = response.json()
+    except json.JSONDecodeError:
+        raise NexusApiError(f"OAuth token endpoint returned HTTP {response.status_code} with a non-JSON body.")
+    if response.status_code != 200 or "error" in body:
+        detail = body.get("error_description") or body.get("error") or f"HTTP {response.status_code}"
+        raise NexusApiError(f"OAuth token request failed: {detail}")
+    return body
+
+
+def _tokens_from_reply(reply: dict[str, Any]) -> dict[str, Any]:
+    expires_in = int(reply.get("expires_in") or 21600)
+    return {
+        "access_token": reply["access_token"],
+        "refresh_token": reply.get("refresh_token"),
+        "token_type": reply.get("token_type", "Bearer"),
+        "scope": reply.get("scope"),
+        "created_at": reply.get("created_at") or int(time.time()),
+        "expires_at": int(time.time()) + expires_in - OAUTH_REFRESH_MARGIN,
+    }
+
+
+async def _oauth_refresh(tokens: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Refresh the access token. Returns new tokens, or None if revoked/invalid (tokens cleared)."""
+    refresh_token = tokens.get("refresh_token")
+    if not refresh_token:
+        return None
+    form = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": _oauth_client_id(),
+    }
+    if _oauth_client_secret():
+        form["client_secret"] = _oauth_client_secret()
+    try:
+        reply = await _oauth_token_request(form)
+    except NexusApiError:
+        # Per the official guide, a 4xx on refresh means the user revoked the app
+        _clear_oauth_tokens()
+        return None
+    new_tokens = _tokens_from_reply(reply)
+    _save_oauth_tokens(new_tokens)
+    return new_tokens
+
+
+async def _auth_headers() -> dict[str, str]:
+    """Per-request auth headers: OAuth Bearer when valid (auto-refresh), else apikey."""
+    tokens = _load_oauth_tokens()
+    if tokens and tokens.get("access_token"):
+        if tokens.get("expires_at", 0) > time.time():
+            return {"Authorization": f"Bearer {tokens['access_token']}"}
+        refreshed = await _oauth_refresh(tokens)
+        if refreshed:
+            return {"Authorization": f"Bearer {refreshed['access_token']}"}
+    api_key = os.environ.get("NEXUS_API_KEY", "").strip()
+    if not api_key:
+        raise NexusApiError(
+            "No authentication available: NEXUS_API_KEY is not set and there is no valid OAuth token. "
+            "Set NEXUS_API_KEY or run nexus_oauth_login."
+        )
+    return {"apikey": api_key}
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +237,7 @@ def _rl_snapshot(response: httpx.Response) -> dict[str, str]:
 def _status_hint(status: int) -> str:
     hints = {
         400: "Bad request - for download_link.json, 'key'/'expires' must come from a .nxm link.",
-        401: "Invalid or missing API key. Check NEXUS_API_KEY.",
+        401: "Invalid or missing credentials. Check NEXUS_API_KEY or refresh the OAuth login.",
         403: (
             "Not permitted. For download_link.json: non-premium users MUST pass 'key' and "
             "'expires' query params taken from the .nxm download link (premium users can omit them)."
@@ -162,7 +283,7 @@ async def _request(
 ) -> tuple[Any, dict[str, str]]:
     client = _get_client()
     try:
-        response = await client.request(method, path, params=params, data=data)
+        response = await client.request(method, path, params=params, data=data, headers=await _auth_headers())
     except httpx.TimeoutException:
         raise NexusApiError("Request timed out after 30s. Try again.")
     except httpx.HTTPError as exc:
@@ -237,7 +358,7 @@ async def _graphql(query: str, variables: Optional[dict[str, Any]] = None) -> tu
 
     client = _get_client()
     try:
-        response = await client.post(GRAPHQL_PATH, json=body)
+        response = await client.post(GRAPHQL_PATH, json=body, headers=await _auth_headers())
     except httpx.TimeoutException:
         raise NexusApiError("Request timed out after 30s. Try again.")
     except httpx.HTTPError as exc:
@@ -2011,6 +2132,200 @@ async def nexus_create_comment(
     return await _gql_call(
         "mutation($t: ID!, $b: String!) { createComment(commentThreadId: $t, body: $b) { ... on CreateCommentMutationPayload { comment { id body createdAt creator { name } } } } }",
         {"t": str(thread_id), "b": body},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tools: OAuth2 login lifecycle
+# ---------------------------------------------------------------------------
+
+_OAUTH_REGISTER_NOTE = (
+    "OAuth applications on Nexus Mods are registered by EMAILING support@nexusmods.com "
+    "(name, short description, logo, source link, callback URI) - there is no self-serve web UI yet. "
+    "Then set NEXUS_OAUTH_CLIENT_ID (and optionally NEXUS_OAUTH_CLIENT_SECRET / "
+    "NEXUS_OAUTH_REDIRECT_URI) in the MCP server 'environment' config."
+)
+
+
+@mcp.tool(name="nexus_oauth_login", annotations={"title": "Start Nexus OAuth login"})
+async def nexus_oauth_login(
+    scope: str = Field(default="public", description="Space-separated OAuth scope. 'public' (or '') suffices for API access; 'public openid' adds identity."),
+    redirect_uri: Optional[str] = Field(default=None, description="Override the callback URI. Must match the one registered with Nexus; override with env NEXUS_OAUTH_REDIRECT_URI."),
+) -> str:
+    """Start the OAuth2 authorization-code flow: returns the URL to open in a browser.
+
+    Uses PKCE S256 + random state (per the official Nexus OAuth guide). After
+    approving, copy the 'code' query parameter from the final redirect URL and
+    pass it to nexus_oauth_exchange. Bearer tokens then take precedence over
+    NEXUS_API_KEY and unlock user-context mutations.
+
+    Returns:
+        JSON {authorize_url, redirect_uri, state, instructions}.
+    """
+    global _oauth_pending
+    client_id = _oauth_client_id()
+    if not client_id:
+        return f"Error: NEXUS_OAUTH_CLIENT_ID is not set. {_OAUTH_REGISTER_NOTE}"
+    if not isinstance(redirect_uri, str):
+        redirect_uri = None
+    ru = redirect_uri or _oauth_redirect_uri()
+    verifier, challenge = _pkce_pair()
+    state = secrets.token_urlsafe(16)
+    _oauth_pending = {"verifier": verifier, "state": state, "redirect_uri": ru, "scope": scope}
+    url = OAUTH_AUTHORIZE_URL + "?" + urllib.parse.urlencode({
+        "client_id": client_id,
+        "response_type": "code",
+        "scope": scope,
+        "redirect_uri": ru,
+        "state": state,
+        "code_challenge_method": "S256",
+        "code_challenge": challenge,
+    })
+    return json.dumps({
+        "authorize_url": url,
+        "redirect_uri": ru,
+        "state": state,
+        "instructions": (
+            "1. Open authorize_url in a browser and approve the application. "
+            "2. From the final redirect URL copy the 'code' query parameter "
+            "(e.g. http://localhost/callback?code=XXXX -> XXXX). "
+            "3. Call nexus_oauth_exchange with that code."
+        ),
+    }, indent=2)
+
+
+@mcp.tool(name="nexus_oauth_exchange", annotations={"title": "Complete Nexus OAuth login"})
+async def nexus_oauth_exchange(
+    code: str = Field(..., description="The 'code' query parameter from the OAuth redirect after nexus_oauth_login.", min_length=1),
+    state: Optional[str] = Field(default=None, description="Optional 'state' value from the redirect URL; verified against the pending login when provided."),
+) -> str:
+    """Complete the OAuth2 flow: exchange the authorization code for tokens.
+
+    Exchanges via PKCE code_verifier (+ client_secret when configured), saves
+    tokens to the token file, and validates the identity with the resulting
+    Bearer token. Tokens auto-refresh; any 4xx refresh response is treated as
+    revocation per the official guide.
+
+    Returns:
+        JSON account summary from nexus_validate_key, or an error string.
+    """
+    global _oauth_pending
+    pending = _oauth_pending
+    if not pending:
+        return "Error: no pending login. Run nexus_oauth_login first."
+    if not isinstance(state, str):
+        state = None
+    if state and state != pending["state"]:
+        return "Error: state mismatch - restart the login with nexus_oauth_login."
+    client_id = _oauth_client_id()
+    if not client_id:
+        return f"Error: NEXUS_OAUTH_CLIENT_ID is not set. {_OAUTH_REGISTER_NOTE}"
+    form = {
+        "grant_type": "authorization_code",
+        "redirect_uri": pending["redirect_uri"],
+        "scope": pending["scope"],
+        "client_id": client_id,
+        "code": code.strip(),
+        "code_verifier": pending["verifier"],
+    }
+    if _oauth_client_secret():
+        form["client_secret"] = _oauth_client_secret()
+    try:
+        reply = await _oauth_token_request(form)
+    except NexusApiError as exc:
+        return f"Error: {exc}"
+    _save_oauth_tokens(_tokens_from_reply(reply))
+    _oauth_pending = None
+    return await nexus_validate_key()
+
+
+@mcp.tool(name="nexus_oauth_status", annotations={**_READ_ONLY_ANNOTATIONS, "title": "OAuth status"})
+async def nexus_oauth_status() -> str:
+    """Report the OAuth login state: configured env vars, token expiry, scope.
+
+    Never exposes the access token itself - only a prefix and expiry metadata.
+
+    Returns:
+        JSON {configured, logged_in, expires_at, scope, has_refresh_token, token_file}.
+    """
+    tokens = _load_oauth_tokens()
+    info: dict[str, Any] = {
+        "client_id_configured": bool(_oauth_client_id()),
+        "client_secret_configured": bool(_oauth_client_secret()),
+        "redirect_uri": _oauth_redirect_uri(),
+        "pending_login": _oauth_pending is not None,
+        "logged_in": False,
+        "token_file": str(_oauth_token_file()),
+    }
+    if tokens:
+        info.update({
+            "logged_in": bool(tokens.get("access_token")),
+            "token_prefix": str(tokens.get("access_token", ""))[:12] + "...",
+            "expires_at": tokens.get("expires_at"),
+            "expires_in_seconds": max(0, int(tokens.get("expires_at", 0)) - int(time.time())) if tokens.get("expires_at") else None,
+            "scope": tokens.get("scope"),
+            "has_refresh_token": bool(tokens.get("refresh_token")),
+        })
+    return json.dumps(info, indent=2)
+
+
+@mcp.tool(name="nexus_oauth_refresh", annotations={"title": "Force OAuth token refresh"})
+async def nexus_oauth_refresh() -> str:
+    """Force a refresh of the OAuth access token via the refresh grant.
+
+    Use when a request unexpectedly returns 401. A 4xx refresh failure means
+    the user revoked the application (see https://users.nexusmods.com/oauth/authorized_applications)
+    and the stored tokens are cleared - log in again with nexus_oauth_login.
+
+    Returns:
+        JSON {refreshed, expires_at, scope} or an error string.
+    """
+    tokens = _load_oauth_tokens()
+    if not tokens:
+        return "Error: not logged in. Run nexus_oauth_login."
+    refreshed = await _oauth_refresh(tokens)
+    if not refreshed:
+        return "Error: refresh failed (token revoked or invalid). Log in again with nexus_oauth_login."
+    return json.dumps({
+        "refreshed": True,
+        "expires_at": refreshed["expires_at"],
+        "scope": refreshed.get("scope"),
+    }, indent=2)
+
+
+@mcp.tool(name="nexus_oauth_logout", annotations={"title": "Log out of OAuth"})
+async def nexus_oauth_logout() -> str:
+    """Delete stored OAuth tokens and fall back to NEXUS_API_KEY authentication.
+
+    Removes the local token file. To fully revoke access, also remove the
+    application at https://users.nexusmods.com/oauth/authorized_applications.
+
+    Returns:
+        JSON {logged_out: true}.
+    """
+    global _oauth_pending
+    _clear_oauth_tokens()
+    _oauth_pending = None
+    return json.dumps({"logged_out": True})
+
+
+@mcp.tool(name="nexus_update_mod_direct_download", annotations={"title": "Toggle mod direct download (v2)"})
+async def nexus_update_mod_direct_download(
+    mod_uid: str = Field(..., description="Mod UID (numeric string, e.g. from nexus_get_mod 'uid')."),
+    enabled: bool = Field(..., description="True to enable direct downloads for this mod, false to disable."),
+) -> str:
+    """Enable or disable direct (no-ads) downloads on your own mod via v2 GraphQL.
+
+    REQUIRES OAuth login (nexus_oauth_login + nexus_oauth_exchange): this
+    user-context mutation is rejected under apikey-only auth even for the
+    mod owner. Useful for mod authors automating release pipelines.
+
+    Returns:
+        JSON payload from Nexus or an error string.
+    """
+    return await _gql_call(
+        "mutation($u: ID!, $e: Boolean!) { updateModDirectDownloadEnabled(modUid: $u, directDownloadEnabled: $e) { ... on UpdateModDirectDownloadEnabledMutationPayload { success } } }",
+        {"u": mod_uid, "e": enabled},
     )
 
 

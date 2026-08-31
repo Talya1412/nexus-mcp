@@ -84,6 +84,33 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 | `nexus_add_favourite_game` / `nexus_remove_favourite_game` | Thêm/bỏ game yêu thích (mutation v2) |
 | `nexus_like_comment` / `nexus_remove_comment_like` | Thích/bỏ thích comment (mutation v2) |
 | `nexus_create_comment` | Đăng comment vào thread (mutation v2; đã verify schema, chưa test live để tránh đăng nội dung công khai) |
+| `nexus_update_mod_direct_download` | Bật/tắt direct download cho mod **sở hữu** (mutation v2 — **chỉ chạy được với OAuth**) |
+
+## OAuth (tuỳ chọn)
+
+Một số mutation user-context (vd `nexus_update_mod_direct_download`) bị từ chối với API key — cần **OAuth Bearer token**. Server hỗ trợ OAuth2 + PKCE (S256) song song với API key: ưu tiên Bearer nếu còn hạn, tự refresh, fallback về API key khi hết/revoked.
+
+**Đăng ký OAuth app**: Nexus **không có trang web** để đăng ký — phải email `support@nexusmods.com` (kèm tên app, mô tả, logo, link source, callback URI). Sau đó set env vars:
+
+```json
+"environment": {
+  "NEXUS_API_KEY": "<key>",
+  "NEXUS_OAUTH_CLIENT_ID": "<client-id-nhận-từ-support>",
+  "NEXUS_OAUTH_CLIENT_SECRET": "<nếu có - app private>",
+  "NEXUS_OAUTH_REDIRECT_URI": "http://localhost/callback",
+  "NEXUS_OAUTH_TOKEN_FILE": "~/.nexus-mcp/oauth-tokens.json"
+}
+```
+
+**Flow 2 bước** (stdio an toàn, browser tự mở từ authorize URL):
+
+1. `nexus_oauth_login` → trả `authorize_url` (kèm state + PKCE challenge), user mở URL, đăng nhập Nexus, nhận `code`
+2. `nexus_oauth_exchange(code)` → đổi code lấy token, lưu vào `NEXUS_OAUTH_TOKEN_FILE`, validate danh tính qua `validate.json`
+
+Tools đi kèm: `nexus_oauth_status` (đã login? token hết hạn?), `nexus_oauth_refresh` (refresh tay), `nexus_oauth_logout` (xóa token).
+
+- Token ~6h TTL, tự refresh trước 60s; refresh 4xx (user revoke) → tự xóa token, fallback API key.
+- Scope chỉ cần `public`; Bearer được chấp nhận trên cả v1 REST và v2 GraphQL.
 
 ## Lưu ý
 
@@ -98,5 +125,5 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 - **v2 GraphQL** (`api.nexusmods.com/v2/graphql`) có pool rate-limit riêng, không trừ quota v1 (2000/giờ, 20000/ngày). Ưu tiên dùng tool v2 cho search/dữ liệu công khai.
 - Scrape website nexusmods.com (tab posts/stats) bị Cloudflare chặn với httpx thường; chỉ qua được với `curl_cffi` (impersonate browser). Comment trên site render client-side nên không extract được — dùng `nexus_get_comment_thread` thay thế.
 - Endpoint v1 `/v1/games/{domain}/categories.json` đã bị Nexus gỡ (404 trên mọi game) — categories chỉ còn qua v2.
-- Mutation sở hữu (vd `updateModDirectDownloadEnabled`) từ chối với API key dù đúng chủ mod ("not allowed") — cần OAuth user-context, server hiện chỉ hỗ trợ apikey.
+- Mutation sở hữu (vd `updateModDirectDownloadEnabled`) từ chối với API key dù đúng chủ mod ("not allowed") — cần OAuth user-context, xem mục [OAuth](#oauth-tuỳ-chọn) (`nexus_update_mod_direct_download` sẽ hoạt động sau khi login).
 - Một số endpoint GraphQL cần OAuth (scopes mà server không có) sẽ trả lỗi sạch; hiện chỉ `nexus_search_comments` bị lỗi 500 từ phía server của Nexus.

@@ -49,6 +49,7 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 | `nexus_get_mod_files` | Danh sách file của mod (filter category) |
 | `nexus_get_file_info` | Chi tiết 1 file (MD5, size, version) |
 | `nexus_get_download_link` | Link download ngắn hạn (non-premium cần `key`+`expires` từ link `.nxm`) |
+| `nexus_download_mod_file` | Tải file trực tiếp về disk (stream, verify MD5+SHA256, cap `max_bytes`; non-premium vẫn cần `key`+`expires`) |
 | `nexus_search_by_md5` | Tìm mod/file từ MD5 hash |
 | `nexus_get_tracked_mods` / `nexus_track_mod` / `nexus_untrack_mod` | Quản lý tracked mods |
 | `nexus_get_endorsements` / `nexus_endorse_mod` / `nexus_abstain_endorsement` | Quản lý endorsements |
@@ -85,6 +86,13 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 | `nexus_like_comment` / `nexus_remove_comment_like` | Thích/bỏ thích comment (mutation v2) |
 | `nexus_create_comment` | Đăng comment vào thread (mutation v2; đã verify schema, chưa test live để tránh đăng nội dung công khai) |
 | `nexus_update_mod_direct_download` | Bật/tắt direct download cho mod **sở hữu** (mutation v2 — **chỉ chạy được với OAuth**) |
+| `nexus_get_files_by_uid` | File theo uid (không cần domain/modId) — truyền `"uid1,uid2"` |
+| `nexus_get_favourite_games` | Danh sách game yêu thích của viewer |
+| `nexus_get_ignored_users` / `nexus_ignore_user` / `nexus_unignore_user` | Quản lý ignored users (mutation v2) |
+| `nexus_get_blocked_tags` / `nexus_block_tag` / `nexus_unblock_tag` | Quản lý blocked tags (mutation v2) |
+| `nexus_get_user_by_name` | Profile user theo username chính xác (nhẹ hơn `nexus_get_user_v2`) |
+| `nexus_get_user_monthly_report` | Báo cáo hoạt động tháng cụ thể (⚠️ API có thể ẩn dữ liệu theo permissions) |
+| `nexus_get_speedtest_urls` | Danh sách speedtest/CDN endpoint |
 
 ## OAuth (tuỳ chọn)
 
@@ -125,5 +133,6 @@ Tools đi kèm: `nexus_oauth_status` (đã login? token hết hạn?), `nexus_oa
 - **v2 GraphQL** (`api.nexusmods.com/v2/graphql`) có pool rate-limit riêng, không trừ quota v1 (2000/giờ, 20000/ngày). Ưu tiên dùng tool v2 cho search/dữ liệu công khai.
 - Scrape website nexusmods.com (tab posts/stats) bị Cloudflare chặn với httpx thường; chỉ qua được với `curl_cffi` (impersonate browser). Comment trên site render client-side nên không extract được — dùng `nexus_get_comment_thread` thay thế.
 - Endpoint v1 `/v1/games/{domain}/categories.json` đã bị Nexus gỡ (404 trên mọi game) — categories chỉ còn qua v2.
+- Mutation user-preferences (ignore/unignore user, block/unblock tag) có **eventual consistency**: mutation trả `success: true` ngay nhưng list đọc ngay sau đó có thể còn stale vài giây.
 - Mutation sở hữu (vd `updateModDirectDownloadEnabled`) từ chối với API key dù đúng chủ mod ("not allowed") — cần OAuth user-context, xem mục [OAuth](#oauth-tuỳ-chọn) (`nexus_update_mod_direct_download` sẽ hoạt động sau khi login).
 - Một số endpoint GraphQL cần OAuth (scopes mà server không có) sẽ trả lỗi sạch; hiện chỉ `nexus_search_comments` bị lỗi 500 từ phía server của Nexus.

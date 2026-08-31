@@ -75,6 +75,15 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 | `nexus_get_collection` | Chi tiết collection theo slug: description BBCode, ratings, tags |
 | `nexus_get_collection_revision` | Chi tiết 1 revision: status, rating, số mod, tổng dung lượng |
 | `nexus_search_comments` | Tìm comment (⚠️ endpoint `searchComments` của Nexus đang 500 server-side) |
+| `nexus_get_comment_thread` | Đọc 1 comment thread đầy đủ: comments + replies (thay thế cho `searchComments` đang lỗi) |
+| `nexus_get_comment` | Đọc 1 comment theo ID |
+| `nexus_get_badges` | Danh sách badge mod có thể đạt ('Top pick', 'Easy install'...) |
+| `nexus_get_user_monthly_summary` | Các tháng user có báo cáo hoạt động hàng tháng |
+| `nexus_track_user` / `nexus_untrack_user` | Theo dõi/dừng theo dõi user (mutation v2) |
+| `nexus_give_kudos` / `nexus_remove_kudos` | Tặng/gỡ kudos cho user (mutation v2) |
+| `nexus_add_favourite_game` / `nexus_remove_favourite_game` | Thêm/bỏ game yêu thích (mutation v2) |
+| `nexus_like_comment` / `nexus_remove_comment_like` | Thích/bỏ thích comment (mutation v2) |
+| `nexus_create_comment` | Đăng comment vào thread (mutation v2; đã verify schema, chưa test live để tránh đăng nội dung công khai) |
 
 ## Lưu ý
 
@@ -87,5 +96,7 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 
 - **Cache TTL phía client** cho GET v1: games 1h, mod/file data 5 phút (Nexus tự cache 5 phút phía server), state cá nhân (`/user`) không bao giờ cache. Gọi lặp lại cùng tham số trong session không tốn quota. GraphQL POST cũng cache 60s.
 - **v2 GraphQL** (`api.nexusmods.com/v2/graphql`) có pool rate-limit riêng, không trừ quota v1 (2000/giờ, 20000/ngày). Ưu tiên dùng tool v2 cho search/dữ liệu công khai.
-- Không scrape website nexusmods.com — vi phạm ToS của Nexus.
+- Scrape website nexusmods.com (tab posts/stats) bị Cloudflare chặn với httpx thường; chỉ qua được với `curl_cffi` (impersonate browser). Comment trên site render client-side nên không extract được — dùng `nexus_get_comment_thread` thay thế.
+- Endpoint v1 `/v1/games/{domain}/categories.json` đã bị Nexus gỡ (404 trên mọi game) — categories chỉ còn qua v2.
+- Mutation sở hữu (vd `updateModDirectDownloadEnabled`) từ chối với API key dù đúng chủ mod ("not allowed") — cần OAuth user-context, server hiện chỉ hỗ trợ apikey.
 - Một số endpoint GraphQL cần OAuth (scopes mà server không có) sẽ trả lỗi sạch; hiện chỉ `nexus_search_comments` bị lỗi 500 từ phía server của Nexus.

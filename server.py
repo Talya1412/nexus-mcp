@@ -1732,5 +1732,287 @@ async def nexus_search_comments(
     )
 
 
+# ---------------------------------------------------------------------------
+# Tools: v2 GraphQL extras (comments, badges, monthly summary, game categories)
+# ---------------------------------------------------------------------------
+
+_COMMENT_THREAD_QUERY = """
+query CommentThreadDetail($id: ID!) {
+  commentThread(commentThreadId: $id) {
+    id
+    comments {
+      totalCount
+      nodes {
+        id body createdAt updatedAt likesCount isPinned
+        creator { memberId name avatar }
+        replies {
+          totalCount
+          nodes { id body createdAt likesCount creator { memberId name } }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_comment_thread",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get comment thread (v2)"},
+)
+async def nexus_get_comment_thread(
+    thread_id: int = Field(..., description="Comment thread ID.", ge=1),
+) -> str:
+    """Get a comment thread with all top-level comments and their replies.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Useful to read replies on threads where
+    nexus_search_comments is unavailable (that endpoint is currently
+    broken upstream).
+
+    Returns:
+        JSON {id, comments: {totalCount, nodes: [{id, body, createdAt,
+        likesCount, isPinned, creator, replies: {totalCount, nodes}}]}}.
+    """
+    return await _gql_call(_COMMENT_THREAD_QUERY, {"id": str(thread_id)})
+
+
+_COMMENT_QUERY = """
+query CommentDetail($id: ID!) {
+  comment(commentId: $id) {
+    id body createdAt updatedAt likesCount isPinned
+    creator { memberId name avatar }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_comment",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get comment (v2)"},
+)
+async def nexus_get_comment(
+    comment_id: int = Field(..., description="Comment ID.", ge=1),
+) -> str:
+    """Get a single comment by ID via v2 GraphQL.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota.
+
+    Returns:
+        JSON {id, body, createdAt, updatedAt, likesCount, isPinned, creator}.
+    """
+    return await _gql_call(_COMMENT_QUERY, {"id": str(comment_id)})
+
+
+_BADGES_QUERY = "{ badges { id name description } }"
+
+
+@mcp.tool(
+    name="nexus_get_badges",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "List mod badges (v2)"},
+)
+async def nexus_get_badges() -> str:
+    """List all badges a mod can earn (e.g. 'Top pick', 'Easy install').
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Static catalog - cache the result in your workflow.
+
+    Returns:
+        JSON {badges: [{id, name, description}]}.
+    """
+    return await _gql_call(_BADGES_QUERY)
+
+
+_MONTHLY_SUMMARY_QUERY = """
+query MonthlySummary($accountId: Int!) {
+  userMonthlySummary(accountId: $accountId) {
+    userId
+    entries { month year }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_user_monthly_summary",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get user monthly summary (v2)"},
+)
+async def nexus_get_user_monthly_summary(
+    account_id: int = Field(..., description="Nexus Mods account ID.", ge=1),
+) -> str:
+    """List the months a user has a monthly activity report for.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Follow up with nexus_get_user_monthly_report
+    (v1) for a specific month's download/upload numbers.
+
+    Returns:
+        JSON {userId, entries: [{month, year}]}.
+    """
+    return await _gql_call(_MONTHLY_SUMMARY_QUERY, {"accountId": account_id})
+
+
+# ---------------------------------------------------------------------------
+# Tools: v2 GraphQL mutations (user actions)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(name="nexus_track_user", annotations={"title": "Track a user (v2)"})
+async def nexus_track_user(
+    user_id: int = Field(..., description="Nexus Mods member ID to track for updates.", ge=1),
+) -> str:
+    """Start tracking a user (get notifications about their new mods) via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {trackUser: {success}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { trackUser(trackedUserId: $id) { ... on TrackUserMutationPayload { success } } }",
+        {"id": str(user_id)},
+    )
+
+
+@mcp.tool(name="nexus_untrack_user", annotations={"title": "Untrack a user (v2)"})
+async def nexus_untrack_user(
+    user_id: int = Field(..., description="Nexus Mods member ID to stop tracking.", ge=1),
+) -> str:
+    """Stop tracking a user via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {untrackUser: {success}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { untrackUser(trackedUserId: $id) { ... on UntrackUserMutationPayload { success } } }",
+        {"id": str(user_id)},
+    )
+
+
+@mcp.tool(name="nexus_give_kudos", annotations={"title": "Give kudos to a user (v2)"})
+async def nexus_give_kudos(
+    user_id: int = Field(..., description="Nexus Mods member ID to give kudos to.", ge=1),
+) -> str:
+    """Give kudos to a user via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {giveKudos: {success}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { giveKudos(kudosUserId: $id) { ... on GiveKudosMutationPayload { success } } }",
+        {"id": str(user_id)},
+    )
+
+
+@mcp.tool(name="nexus_remove_kudos", annotations={"title": "Remove kudos from a user (v2)"})
+async def nexus_remove_kudos(
+    user_id: int = Field(..., description="Nexus Mods member ID to remove kudos from.", ge=1),
+) -> str:
+    """Remove previously given kudos from a user via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {removeKudos: {success}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { removeKudos(kudosUserId: $id) { ... on RemoveKudosMutationPayload { success } } }",
+        {"id": str(user_id)},
+    )
+
+
+@mcp.tool(name="nexus_add_favourite_game", annotations={"title": "Favourite a game (v2)"})
+async def nexus_add_favourite_game(
+    game_id: int = Field(..., description="Game ID (from nexus_search_games / nexus_get_game 'id').", ge=1),
+) -> str:
+    """Add a game to your favourites via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {addFavouriteGame: {success}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { addFavouriteGame(gameId: $id) { ... on AddFavouriteGameMutationPayload { success } } }",
+        {"id": str(game_id)},
+    )
+
+
+@mcp.tool(name="nexus_remove_favourite_game", annotations={"title": "Unfavourite a game (v2)"})
+async def nexus_remove_favourite_game(
+    game_id: int = Field(..., description="Game ID to remove from favourites.", ge=1),
+) -> str:
+    """Remove a game from your favourites via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {removeFavouriteGame: {success}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { removeFavouriteGame(gameId: $id) { ... on RemoveFavouriteGameMutationPayload { success } } }",
+        {"id": str(game_id)},
+    )
+
+
+@mcp.tool(name="nexus_like_comment", annotations={"title": "Like a comment (v2)"})
+async def nexus_like_comment(
+    comment_id: int = Field(..., description="Comment ID to like.", ge=1),
+) -> str:
+    """Like a comment via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {likeComment: {comment}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { likeComment(commentId: $id) { ... on LikeCommentMutationPayload { comment { id likesCount } } } }",
+        {"id": str(comment_id)},
+    )
+
+
+@mcp.tool(name="nexus_remove_comment_like", annotations={"title": "Unlike a comment (v2)"})
+async def nexus_remove_comment_like(
+    comment_id: int = Field(..., description="Comment ID to remove your like from.", ge=1),
+) -> str:
+    """Remove your like from a comment via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+
+    Returns:
+        JSON {removeCommentLike: {comment}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { removeCommentLike(commentId: $id) { ... on RemoveCommentLikeMutationPayload { comment { id likesCount } } } }",
+        {"id": str(comment_id)},
+    )
+
+
+@mcp.tool(name="nexus_create_comment", annotations={"title": "Post a comment (v2)"})
+async def nexus_create_comment(
+    thread_id: int = Field(..., description="Comment thread ID to reply in.", ge=1),
+    body: str = Field(..., description="Comment body text (plain text).", min_length=1),
+) -> str:
+    """Post a top-level comment in a thread via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+    Find thread IDs on mod pages (?tab=posts); forum threads and mod
+    posts have distinct thread IDs.
+
+    Returns:
+        JSON {createComment: {comment: {id, body, ...}}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($t: ID!, $b: String!) { createComment(commentThreadId: $t, body: $b) { ... on CreateCommentMutationPayload { comment { id body createdAt creator { name } } } } }",
+        {"t": str(thread_id), "b": body},
+    )
+
+
 if __name__ == "__main__":
     mcp.run()

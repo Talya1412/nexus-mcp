@@ -61,6 +61,20 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 | `nexus_get_mod_v2` | Chi tiết mod đầy đủ: description BBCode thô, tags, requirements, toàn bộ file list — những thứ v1 không trả về |
 | `nexus_get_user_v2` | Profile công khai theo `member_id` hoặc `username` (kudos, modCount, joined...) |
 | `nexus_search_collections` | Tìm collection (mod pack) free-text + sort — v1 không có |
+| `nexus_graphql_query` | Chạy query GraphQL thô (escape hatch cho power user) |
+| `nexus_graphql_introspect` | Introspect type bất kỳ trong schema v2 (tự khám phá API) |
+| `nexus_search_users` | Tìm user theo tên (wildcard/exact) — không cần username chính xác |
+| `nexus_search_games` | Tìm game free-text + sort (downloads/mods/name...) |
+| `nexus_get_game_v2` | Chi tiết game: genre, forum, đếm mod/download/collection, Vortex |
+| `nexus_get_files_v2` | File list của mod qua v2 (không tốn quota v1) |
+| `nexus_get_mods_batch` | Lấy NHIỀU mod cùng lúc qua 1 query — `"domain:modId,domain:modId"` |
+| `nexus_get_mod_endorsers` | Danh sách user endorse 1 mod (cursor pagination) |
+| `nexus_get_news` | Tin tức Nexus (site/game news, interviews...) filter theo category/game |
+| `nexus_get_categories` | Categories per-game hoặc global (collection categories) |
+| `nexus_get_tags` | Tag taxonomy của game (id, name, parentId, blockable...) |
+| `nexus_get_collection` | Chi tiết collection theo slug: description BBCode, ratings, tags |
+| `nexus_get_collection_revision` | Chi tiết 1 revision: status, rating, số mod, tổng dung lượng |
+| `nexus_search_comments` | Tìm comment (⚠️ endpoint `searchComments` của Nexus đang 500 server-side) |
 
 ## Lưu ý
 
@@ -71,6 +85,7 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 
 ### Tiết kiệm quota
 
-- **Cache TTL phía client** cho GET v1: games 1h, mod/file data 5 phút (Nexus tự cache 5 phút phía server), state cá nhân (`/user`) không bao giờ cache. Gọi lặp lại cùng tham số trong session không tốn quota.
+- **Cache TTL phía client** cho GET v1: games 1h, mod/file data 5 phút (Nexus tự cache 5 phút phía server), state cá nhân (`/user`) không bao giờ cache. Gọi lặp lại cùng tham số trong session không tốn quota. GraphQL POST cũng cache 60s.
 - **v2 GraphQL** (`api.nexusmods.com/v2/graphql`) có pool rate-limit riêng, không trừ quota v1 (2000/giờ, 20000/ngày). Ưu tiên dùng tool v2 cho search/dữ liệu công khai.
 - Không scrape website nexusmods.com — vi phạm ToS của Nexus.
+- Một số endpoint GraphQL cần OAuth (scopes mà server không có) sẽ trả lỗi sạch; hiện chỉ `nexus_search_comments` bị lỗi 500 từ phía server của Nexus.

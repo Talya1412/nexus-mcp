@@ -1069,5 +1069,668 @@ async def nexus_search_collections(
     return data
 
 
+# ---------------------------------------------------------------------------
+# Tools: v2 GraphQL extras (raw queries, games, users, news, comments, ...)
+# ---------------------------------------------------------------------------
+
+_GQL_INTROSPECT_QUERY = """
+query Introspect($t: String!) {
+  __type(name: $t) {
+    name kind description
+    fields { name description type { name kind ofType { name kind ofType { name kind ofType { name } } } } }
+    inputFields { name description type { name kind ofType { name kind ofType { name } } } }
+    enumValues { name description }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_graphql_introspect",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Introspect v2 GraphQL schema type"},
+)
+async def nexus_graphql_introspect(
+    type_name: str = Field(..., description="GraphQL type name to introspect, e.g. 'Mod', 'ModsFilter', 'Collection'."),
+) -> str:
+    """Introspect any type in the Nexus v2 GraphQL schema.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Useful for discovering filters, sorts, and fields
+    before composing a query with nexus_graphql_query.
+
+    Returns:
+        JSON {name, kind, description, fields: [{name, type}], inputFields,
+        enumValues} or null if the type does not exist.
+    """
+    return await _gql_call(_GQL_INTROSPECT_QUERY, {"t": type_name})
+
+
+@mcp.tool(
+    name="nexus_graphql_query",
+    annotations={"title": "Run raw v2 GraphQL query"},
+)
+async def nexus_graphql_query(
+    query: str = Field(..., description="GraphQL query document, e.g. 'query { games(count: 5) { nodes { name domainName } } }'."),
+    variables: str = Field(default="{}", description="JSON object string with query variables, e.g. '{\"term\": \"sky\"}'."),
+) -> str:
+    """Run a raw query against the Nexus v2 GraphQL API (power-user escape hatch).
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Introspect types with nexus_graphql_introspect first to
+    build valid queries. Use for read-only queries; most mutations require
+    OAuth scopes this server does not have and will fail cleanly.
+
+    Returns:
+        The raw GraphQL 'data' payload as JSON, or 'Error: ...' with the
+        server-side GraphQL error messages.
+    """
+    try:
+        parsed_vars = json.loads(variables)
+    except json.JSONDecodeError as exc:
+        return f"Error: variables is not valid JSON ({exc})."
+    if not isinstance(parsed_vars, dict):
+        return "Error: variables must be a JSON object string."
+    return await _gql_call(query, parsed_vars)
+
+
+def _gql_page(data: str, root: str) -> str:
+    try:
+        parsed = json.loads(data)
+    except json.JSONDecodeError:
+        return data
+    page = parsed.get(root) if isinstance(parsed, dict) else None
+    if isinstance(page, dict) and "totalCount" in page:
+        nodes = page.get("nodes") or []
+        return json.dumps({**page, "nodes": nodes, "_returned": len(nodes)}, indent=2, ensure_ascii=False)
+    return data
+
+
+_USERS_SEARCH_QUERY = """
+query SearchUsers($filter: UsersSearchFilter, $sort: [UsersSearchSort!], $offset: Int, $count: Int) {
+  users(filter: $filter, sort: $sort, offset: $offset, count: $count) {
+    totalCount nodesCount
+    nodes {
+      memberId name about avatar modCount joined kudos
+      contributedModCount collectionCount recognizedAuthor lastActive posts
+    }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_search_users",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search Nexus users (v2)"},
+)
+async def nexus_search_users(
+    term: str = Field(..., description="Username search term."),
+    mode: Literal["wildcard", "exact"] = Field(default="wildcard", description="wildcard = substring match; exact = exact username match."),
+    sort: Literal["name", "relevance"] = Field(default="relevance", description="Sort key."),
+    direction: Literal["DESC", "ASC"] = Field(default="ASC", description="Sort direction."),
+    offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
+    count: int = Field(default=20, description="Results per page.", ge=1, le=100),
+) -> str:
+    """Search Nexus Mods users by username (v2 GraphQL).
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Unlike nexus_get_user_v2 this supports partial names.
+
+    Returns:
+        JSON {totalCount, _returned, nodes: [{memberId, name, avatar, modCount,
+        joined, kudos, ...}]}. Paginate with offset += _returned.
+    """
+    if mode == "exact":
+        flt: dict[str, Any] = {"nameExact": [{"value": term}]}
+    else:
+        flt = {"nameWildcard": [{"value": term, "op": "WILDCARD"}]}
+    data = await _gql_call(
+        _USERS_SEARCH_QUERY,
+        {
+            "filter": flt,
+            "sort": [{sort: {"direction": direction}}],
+            "offset": offset,
+            "count": count,
+        },
+    )
+    return _gql_page(data, "users")
+
+
+_GAMES_SEARCH_QUERY = """
+query SearchGames($filter: GamesSearchFilter, $sort: [GamesSearchSort!], $offset: Int, $count: Int) {
+  games(filter: $filter, sort: $sort, offset: $offset, count: $count) {
+    totalCount nodesCount
+    nodes {
+      domainName name id modCount downloadCount collectionCount
+      genre forumUrl supportsVortex approvedAt
+    }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_search_games",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search Nexus games (v2)"},
+)
+async def nexus_search_games(
+    term: Optional[str] = Field(default=None, description="Free-text term matched against game names (wildcard match). Optional."),
+    sort: Literal["downloads", "mods", "collections", "name", "approved", "relevance"] = Field(
+        default="downloads", description="Sort key."
+    ),
+    direction: Literal["DESC", "ASC"] = Field(default="DESC", description="Sort direction."),
+    offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
+    count: int = Field(default=20, description="Results per page.", ge=1, le=100),
+) -> str:
+    """Search Nexus Mods games by name, sorted and paginated (v2 GraphQL).
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Complements nexus_get_games (full cached catalog).
+
+    Returns:
+        JSON {totalCount, _returned, nodes: [{domainName, name, id, modCount,
+        downloadCount, genre, forumUrl, supportsVortex, approvedAt}]}.
+    """
+    flt: Optional[dict[str, Any]] = None
+    if term:
+        flt = {"name": [{"value": term, "op": "WILDCARD"}]}
+    data = await _gql_call(
+        _GAMES_SEARCH_QUERY,
+        {
+            "filter": flt,
+            "sort": [{sort: {"direction": direction}}],
+            "offset": offset,
+            "count": count,
+        },
+    )
+    return _gql_page(data, "games")
+
+
+_GAME_DETAIL_QUERY = """
+query GameDetail($domain: String!) {
+  game(domainName: $domain) {
+    domainName name id genre forumUrl modCount downloadCount uniqueDownloadCount
+    collectionCount supportsVortex trendingPeriodDays approvedAt
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_game_v2",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get rich game details (v2)"},
+)
+async def nexus_get_game_v2(
+    domain_name: str = Field(..., description=DOMAIN_DESC),
+) -> str:
+    """Get rich game details via v2 GraphQL: mod/download/collection counts,
+    genre, forum URL, Vortex support.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota.
+
+    Returns:
+        JSON game object, or {error: ...} for unknown domains.
+    """
+    return await _gql_call(_GAME_DETAIL_QUERY, {"domain": domain_name})
+
+
+_MOD_FILES_QUERY = """
+query ModFiles($modId: ID!, $gameId: ID!) {
+  modFiles(modId: $modId, gameId: $gameId) {
+    fileId name version category sizeInBytes totalDownloads date description
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_files_v2",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get mod file list (v2)"},
+)
+async def nexus_get_files_v2(
+    domain_name: str = Field(..., description=DOMAIN_DESC),
+    mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
+) -> str:
+    """Get the complete file list of a mod via v2 GraphQL.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Same data as nexus_get_mod_files but from v2 and
+    therefore quota-free on the v1 pool.
+
+    Returns:
+        JSON {totalFiles, _returned, files: [{fileId, name, version, category,
+        sizeInBytes, totalDownloads, date, description}]}.
+    """
+    game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
+    try:
+        game = json.loads(game_data)
+    except json.JSONDecodeError:
+        return game_data
+    game_id = (game or {}).get("game", {}).get("id") if isinstance(game, dict) else None
+    if not game_id:
+        return json.dumps(
+            {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
+            indent=2,
+        )
+    data = await _gql_call(_MOD_FILES_QUERY, {"modId": mod_id, "gameId": game_id})
+    try:
+        parsed = json.loads(data)
+    except json.JSONDecodeError:
+        return data
+    files = parsed.get("modFiles") if isinstance(parsed, dict) else None
+    if isinstance(files, list):
+        return json.dumps(
+            {"totalFiles": len(files), "_returned": len(files), "files": files},
+            indent=2,
+            ensure_ascii=False,
+        )
+    return data
+
+
+_MODS_BATCH_QUERY = """
+query ModsByDomain($ids: [CompositeDomainWithIdInput!]!, $offset: Int, $count: Int) {
+  legacyModsByDomain(ids: $ids, offset: $offset, count: $count) {
+    totalCount
+    nodes {
+%s
+    }
+  }
+}
+""" % _MOD_SEARCH_FIELDS
+
+
+@mcp.tool(
+    name="nexus_get_mods_batch",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get many mods in one query (v2)"},
+)
+async def nexus_get_mods_batch(
+    mods: str = Field(
+        ...,
+        description='Comma-separated "domain:modId" entries, e.g. "skyrimse:12604,fallout4:27251".',
+    ),
+    offset: int = Field(default=0, description="Offset into the resolved mod list.", ge=0),
+    count: int = Field(default=25, description="Max mods to return.", ge=1, le=100),
+) -> str:
+    """Fetch many mods across games in a single v2 GraphQL query.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Batch equivalent of nexus_get_mod - ideal for
+    resolving many mod IDs at once without burning quota.
+
+    Returns:
+        JSON {totalResolved, _returned, mods: [...same shape as
+        nexus_search_mods nodes...]}.
+    """
+    entries: list[dict[str, Any]] = []
+    bad: list[str] = []
+    for chunk in mods.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        domain, sep, mod_id = chunk.rpartition(":")
+        if not sep or not domain.strip() or not mod_id.strip().isdigit():
+            bad.append(chunk)
+            continue
+        entries.append({"gameDomain": domain.strip(), "modId": int(mod_id)})
+    if bad:
+        return json.dumps(
+            {"error": 'Invalid entries (expected "domain:modId"):', "entries": bad},
+            indent=2,
+        )
+    if not entries:
+        return "Error: provide at least one \"domain:modId\" entry."
+    data = await _gql_call(_MODS_BATCH_QUERY, {"ids": entries, "offset": offset, "count": count})
+    try:
+        parsed = json.loads(data)
+    except json.JSONDecodeError:
+        return data
+    root = parsed.get("legacyModsByDomain") if isinstance(parsed, dict) else None
+    if isinstance(root, list):
+        return json.dumps(
+            {"totalResolved": len(root), "_returned": len(root), "mods": root},
+            indent=2,
+            ensure_ascii=False,
+        )
+    if isinstance(root, dict) and "nodes" in root:
+        nodes = root.get("nodes") or []
+        return json.dumps(
+            {"totalResolved": root.get("totalCount", len(nodes)), "_returned": len(nodes), "mods": nodes},
+            indent=2,
+            ensure_ascii=False,
+        )
+    return data
+
+
+_MOD_UID_QUERY = """
+query ModUid($modId: ID!, $gameId: ID!) {
+  mod(modId: $modId, gameId: $gameId) { uid }
+}
+"""
+
+_MOD_ENDORSERS_QUERY = """
+query ModEndorsers($modUid: ID!, $first: Int) {
+  modEndorsers(modUid: $modUid, first: $first) {
+    pageInfo { endCursor hasNextPage }
+    nodes { memberId name avatar modCount kudos contributedModCount collectionCount }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_mod_endorsers",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get mod endorsers (v2)"},
+)
+async def nexus_get_mod_endorsers(
+    domain_name: str = Field(..., description=DOMAIN_DESC),
+    mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
+    first: int = Field(default=20, description="Page size (cursor pagination).", ge=1, le=100),
+    after_cursor: Optional[str] = Field(default=None, description="Cursor from a previous page's pageInfo.endCursor."),
+) -> str:
+    """List users who endorsed a mod via v2 GraphQL.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Resolves the mod's uid first (two-step, both cached).
+
+    Returns:
+        JSON {pageInfo: {endCursor, hasNextPage}, nodes: [{memberId, name,
+        avatar, modCount, kudos, ...}]}. Paginate with after_cursor.
+    """
+    game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
+    try:
+        game = json.loads(game_data)
+    except json.JSONDecodeError:
+        return game_data
+    game_id = (game or {}).get("game", {}).get("id") if isinstance(game, dict) else None
+    if not game_id:
+        return json.dumps(
+            {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
+            indent=2,
+        )
+    uid_data = await _gql_call(_MOD_UID_QUERY, {"modId": mod_id, "gameId": game_id})
+    try:
+        uid_parsed = json.loads(uid_data)
+    except json.JSONDecodeError:
+        return uid_data
+    mod_uid = (uid_parsed or {}).get("mod", {}).get("uid") if isinstance(uid_parsed, dict) else None
+    if not mod_uid:
+        return json.dumps(
+            {"error": f"Mod {mod_id} not found in '{domain_name}' (uid lookup returned nothing).", "mod": uid_parsed},
+            indent=2,
+        )
+    return await _gql_call(_MOD_ENDORSERS_QUERY, {"modUid": mod_uid, "first": first})
+
+
+_NEWS_QUERY = """
+query News($cat: NewsCategoryEnum, $gameId: Int, $offset: Int, $count: Int) {
+  news(newsCategory: $cat, gameId: $gameId, offset: $offset, count: $count) {
+    totalCount nodesCount
+    nodes {
+      id title summary author { memberId name } date newsCategory { name }
+      sourceName sourceUrl commentsCount image
+      games { domainName name }
+    }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_news",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get Nexus news (v2)"},
+)
+async def nexus_get_news(
+    category: Optional[Literal["SITE_NEWS", "GAME_NEWS", "MOD_NEWS", "INTERVIEWS", "COMPETITIONS", "FEATURES"]] = Field(
+        default=None, description="Filter by news category. Optional."
+    ),
+    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
+    count: int = Field(default=20, description="Results per page.", ge=1, le=100),
+) -> str:
+    """Get Nexus Mods news articles (site news, game news, interviews, ...).
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Filter by category and/or game.
+
+    Returns:
+        JSON {totalCount, _returned, nodes: [{id, title, summary, author, date,
+        newsCategory, sourceName, sourceUrl, commentsCount, image, games}]}.
+    """
+    game_id: Optional[int] = None
+    if domain_name:
+        game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
+        try:
+            game = json.loads(game_data)
+        except json.JSONDecodeError:
+            return game_data
+        game_id = (game or {}).get("game", {}).get("id") if isinstance(game, dict) else None
+        if not game_id:
+            return json.dumps(
+                {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
+                indent=2,
+            )
+    data = await _gql_call(
+        _NEWS_QUERY,
+        {"cat": category, "gameId": game_id, "offset": offset, "count": count},
+    )
+    return _gql_page(data, "news")
+
+
+_CATEGORIES_QUERY = """
+query Categories($gameId: Int) {
+  categories(gameId: $gameId) {
+    id name parentId description approved createdAt updatedAt
+  }
+}
+"""
+
+_GLOBAL_CATEGORIES_QUERY = """
+query GlobalCategories {
+  categories(global: true) {
+    id name parentId description approved createdAt updatedAt
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_categories",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get mod categories (v2)"},
+)
+async def nexus_get_categories(
+    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    is_global: bool = Field(default=False, description="If true, return global categories instead of game-specific ones."),
+) -> str:
+    """Get mod categories (per-game or global) via v2 GraphQL.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Provide exactly one of domain_name or is_global.
+    Note: these are collection-style categories (Total Overhaul, Themed,
+    Vanilla Plus, ...) - per-game lists may be sparse for newer games.
+
+    Returns:
+        JSON list [{id, name, parentId, description, approved, ...}].
+    """
+    if is_global:
+        if domain_name:
+            return "Error: provide only one of domain_name or is_global."
+        return await _gql_call(_GLOBAL_CATEGORIES_QUERY, {})
+    if not domain_name:
+        return "Error: provide domain_name or set is_global=true."
+    game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
+    try:
+        game = json.loads(game_data)
+    except json.JSONDecodeError:
+        return game_data
+    game_id = (game or {}).get("game", {}).get("id") if isinstance(game, dict) else None
+    if not game_id:
+        return json.dumps(
+            {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
+            indent=2,
+        )
+    return await _gql_call(_CATEGORIES_QUERY, {"gameId": game_id})
+
+
+_LEGACY_TAGS_QUERY = """
+query LegacyTags($gameId: ID, $onlyAdult: Boolean, $excludeAdult: Boolean) {
+  legacyTags(gameId: $gameId, onlyAdult: $onlyAdult, excludeAdult: $excludeAdult) {
+    id name parentId global blockable searchable
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_tags",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get mod tags (v2)"},
+)
+async def nexus_get_tags(
+    domain_name: str = Field(..., description=DOMAIN_DESC),
+    only_adult: bool = Field(default=False, description="If true, return only adult-content tags."),
+    exclude_adult: bool = Field(default=True, description="If true, exclude adult-content tags from results."),
+) -> str:
+    """Get the mod tag taxonomy of a game via v2 GraphQL.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Useful to build tag filters for nexus_search_mods.
+
+    Returns:
+        JSON list [{id, name, parentId, global, blockable, searchable}].
+    """
+    game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
+    try:
+        game = json.loads(game_data)
+    except json.JSONDecodeError:
+        return game_data
+    game_id = (game or {}).get("game", {}).get("id") if isinstance(game, dict) else None
+    if not game_id:
+        return json.dumps(
+            {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
+            indent=2,
+        )
+    return await _gql_call(
+        _LEGACY_TAGS_QUERY,
+        {"gameId": game_id, "onlyAdult": only_adult, "excludeAdult": exclude_adult},
+    )
+
+
+_COLLECTION_DETAIL_QUERY = """
+query CollectionDetail($slug: String!) {
+  collection(slug: $slug) {
+    slug name summary description endorsements totalDownloads uniqueDownloads
+    overallRating overallRatingCount recentRating recentRatingCount
+    createdAt updatedAt
+    game { domainName name }
+    user { memberId name avatar }
+    tags { name }
+    category { name }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_collection",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get collection details (v2)"},
+)
+async def nexus_get_collection(
+    slug: str = Field(..., description="Collection slug from nexus_search_collections, e.g. 'collections-skyrimsse-x'."),
+) -> str:
+    """Get full details of a mod collection by slug via v2 GraphQL.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. v1 REST has no collection detail endpoint.
+
+    Returns:
+        JSON {slug, name, summary, description (BBCode), endorsements,
+        downloads, ratings, game, author, tags, category}.
+    """
+    return await _gql_call(_COLLECTION_DETAIL_QUERY, {"slug": slug})
+
+
+_COLLECTION_REVISION_QUERY = """
+query CollectionRevisionDetail($slug: String!, $rev: Int, $adult: Boolean, $domain: String) {
+  collectionRevision(slug: $slug, revision: $rev, viewAdultContent: $adult, domainName: $domain) {
+    id revisionNumber revisionStatus status adultContent latest
+    overallRating overallRatingCount totalDownloads uniqueDownloads
+    modCount totalSize createdAt updatedAt
+    collection { slug name }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_get_collection_revision",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get collection revision (v2)"},
+)
+async def nexus_get_collection_revision(
+    slug: str = Field(..., description="Collection slug from nexus_search_collections."),
+    revision: Optional[int] = Field(default=None, description="Revision number. Omit for the latest revision.", ge=1),
+    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    view_adult_content: bool = Field(default=False, description="Set true to inspect adult collections."),
+) -> str:
+    """Get a specific collection revision (mod count, sizes, status) via v2 GraphQL.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota.
+
+    Returns:
+        JSON {id, revisionNumber, revisionStatus, status, adultContent, latest,
+        overallRating, totalDownloads, uniqueDownloads, modCount, totalSize,
+        collection}.
+    """
+    return await _gql_call(
+        _COLLECTION_REVISION_QUERY,
+        {"slug": slug, "rev": revision, "adult": view_adult_content, "domain": domain_name},
+    )
+
+
+_COMMENTS_SEARCH_QUERY = """
+query SearchComments($filter: CommentsSearchFilter, $sort: [CommentsSearchSort!], $first: Int) {
+  searchComments(filter: $filter, sort: $sort, first: $first) {
+    totalCount timeTaken
+    nodes {
+      id body createdAt updatedAt likesCount isPinned
+      creator { memberId name avatar }
+    }
+  }
+}
+"""
+
+
+@mcp.tool(
+    name="nexus_search_comments",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search comments (v2)"},
+)
+async def nexus_search_comments(
+    term: Optional[str] = Field(default=None, description="Free-text search over comment bodies."),
+    thread_id: Optional[int] = Field(default=None, description="Restrict results to a single comment thread.", ge=1),
+    count: int = Field(default=20, description="Results per page (cursor pagination).", ge=1, le=100),
+) -> str:
+    """Search Nexus Mods comments by text or list a thread's comments.
+
+    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
+    rate-limit quota. Provide exactly one of term or thread_id. KNOWN ISSUE:
+    Nexus' searchComments endpoint currently returns HTTP 500 for all
+    requests server-side; errors are surfaced as-is until Nexus fixes it.
+    May also require extra permissions for some threads.
+
+    Returns:
+        JSON {totalCount, timeTaken, nodes: [{id, body, createdAt, likesCount,
+        isPinned, creator}]}.
+    """
+    if bool(term) == bool(thread_id):
+        return "Error: provide exactly one of term or thread_id."
+    if thread_id:
+        flt: dict[str, Any] = {"threadId": [{"value": str(thread_id), "op": "EQUALS"}]}
+    else:
+        flt = {"query": [{"value": term, "op": "WILDCARD"}]}
+    return await _gql_call(
+        _COMMENTS_SEARCH_QUERY,
+        {"filter": flt, "sort": None, "first": count},
+    )
+
+
 if __name__ == "__main__":
     mcp.run()

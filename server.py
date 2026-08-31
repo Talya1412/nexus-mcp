@@ -2292,6 +2292,45 @@ async def nexus_edit_comment(
     )
 
 
+@mcp.tool(name="nexus_discard_comment", annotations={"title": "Discard a comment (v2)"})
+async def nexus_discard_comment(
+    comment_id: int = Field(..., description="Comment ID to discard (soft-delete).", ge=1),
+) -> str:
+    """Discard (soft-delete) a comment via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+    Discarded comments are removed from public view and can be brought
+    back with nexus_restore_comment. Only the author (or a moderator)
+    can discard a comment.
+
+    Returns:
+        JSON {discardComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { discardComment(commentId: $id) { ... on DiscardCommentMutationPayload { comment { id isDiscarded discardedAt } } } }",
+        {"id": str(comment_id)},
+    )
+
+
+@mcp.tool(name="nexus_restore_comment", annotations={"title": "Restore a comment (v2)"})
+async def nexus_restore_comment(
+    comment_id: int = Field(..., description="Comment ID to restore (undo discard).", ge=1),
+) -> str:
+    """Restore a previously discarded comment via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+    Undo for nexus_discard_comment — the comment becomes publicly
+    visible again.
+
+    Returns:
+        JSON {restoreComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!) { restoreComment(commentId: $id) { ... on RestoreCommentMutationPayload { comment { id isDiscarded discardedAt } } } }",
+        {"id": str(comment_id)},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tools: v2 GraphQL reads & user preferences (batch 4)
 # ---------------------------------------------------------------------------

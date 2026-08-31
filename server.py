@@ -2253,8 +2253,10 @@ async def nexus_remove_comment_like(
 async def nexus_create_comment(
     thread_id: int = Field(..., description="Comment thread ID to reply in.", ge=1),
     body: str = Field(..., description="Comment body text (plain text).", min_length=1),
+    reply_to_id: Optional[int] = Field(None, description="Comment ID to reply to; omit for a top-level comment.", ge=1),
 ) -> str:
-    """Post a top-level comment in a thread via v2 GraphQL.
+    """Post a comment in a thread via v2 GraphQL — top-level by default,
+    or a nested reply when reply_to_id is given.
 
     Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
     Find thread IDs on mod pages (?tab=posts); forum threads and mod
@@ -2263,9 +2265,30 @@ async def nexus_create_comment(
     Returns:
         JSON {createComment: {comment: {id, body, ...}}} or an error string.
     """
+    if not isinstance(reply_to_id, int):
+        reply_to_id = None  # direct-call artifact: unpassed Optional Field params arrive as FieldInfo
     return await _gql_call(
-        "mutation($t: ID!, $b: String!) { createComment(commentThreadId: $t, body: $b) { ... on CreateCommentMutationPayload { comment { id body createdAt creator { name } } } } }",
-        {"t": str(thread_id), "b": body},
+        "mutation($t: ID!, $b: String!, $r: ID) { createComment(commentThreadId: $t, body: $b, replyToId: $r) { ... on CreateCommentMutationPayload { comment { id body createdAt creator { name } } } } }",
+        {"t": str(thread_id), "b": body, "r": str(reply_to_id) if reply_to_id is not None else None},
+    )
+
+
+@mcp.tool(name="nexus_edit_comment", annotations={"title": "Edit a comment (v2)"})
+async def nexus_edit_comment(
+    comment_id: int = Field(..., description="Comment ID to edit (must be your own comment).", ge=1),
+    body: str = Field(..., description="New comment body text (plain text).", min_length=1),
+) -> str:
+    """Edit the body of your own comment via v2 GraphQL.
+
+    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
+    Only the comment's author can edit it.
+
+    Returns:
+        JSON {updateComment: {comment: {id, body, ...}}} or an error string.
+    """
+    return await _gql_call(
+        "mutation($id: ID!, $b: String!) { updateComment(commentId: $id, body: $b) { ... on UpdateCommentMutationPayload { comment { id body createdAt creator { name } } } } }",
+        {"id": str(comment_id), "b": body},
     )
 
 

@@ -84,7 +84,8 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 | `nexus_give_kudos` / `nexus_remove_kudos` | Tặng/gỡ kudos cho user (mutation v2) |
 | `nexus_add_favourite_game` / `nexus_remove_favourite_game` | Thêm/bỏ game yêu thích (mutation v2) |
 | `nexus_like_comment` / `nexus_remove_comment_like` | Thích/bỏ thích comment (mutation v2) |
-| `nexus_create_comment` | Đăng comment vào thread (mutation v2; đã verify schema, chưa test live để tránh đăng nội dung công khai) |
+| `nexus_create_comment` | Đăng comment vào thread — top-level hoặc **reply lồng vào 1 comment cụ thể** qua `reply_to_id` (mutation v2; schema-verified, chưa test live để tránh đăng nội dung công khai) |
+| `nexus_edit_comment` | Sửa nội dung comment **của chính mình** (mutation v2 `updateComment`; schema-verified, chưa test live) |
 | `nexus_update_mod_direct_download` | Bật/tắt direct download cho mod **sở hữu** (mutation v2 — **chỉ chạy được với OAuth**) |
 | `nexus_get_files_by_uid` | File theo uid (không cần domain/modId) — truyền `"uid1,uid2"` |
 | `nexus_get_favourite_games` | Danh sách game yêu thích của viewer |

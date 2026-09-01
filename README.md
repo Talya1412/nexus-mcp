@@ -96,6 +96,46 @@ Sau khi sửa config, **khởi động lại opencode** (config chỉ load lúc 
 | `nexus_get_user_monthly_report` | Báo cáo hoạt động tháng cụ thể (⚠️ API có thể ẩn dữ liệu theo permissions) |
 | `nexus_get_speedtest_urls` | Danh sách speedtest/CDN endpoint |
 
+### Batch cuối — v2 reads + mutations collection/moderation (134 tools tổng)
+
+| Tool | Mô tả |
+|---|---|
+| `nexus_get_age_verification_info` / `nexus_start_age_verification_flow` / `nexus_start_age_verification_appeal_flow` | Xem trạng thái xác minh tuổi + bắt đầu flow xác minh/kháng nghị (mutation) |
+| `nexus_get_api_applications` | Các OAuth applications đã đăng ký |
+| `nexus_get_category_by_id` | Collection category theo ID |
+| `nexus_get_collection_games` | Games có collection |
+| `nexus_get_current_warnings` | Warnings/moderation hiện tại của viewer |
+| `nexus_get_external_video` | Video external theo ID |
+| `nexus_get_file_hash` / `nexus_get_file_hashes` | MD5 hash file mod (1 file hoặc nhiều `gameId:fileId`) |
+| `nexus_get_game_artwork` | Artwork của game |
+| `nexus_get_legacy_mods` | Dữ liệu mod legacy theo `"gameId:modId"` |
+| `nexus_get_tags_v2` / `nexus_get_tag_by_id` / `nexus_get_tag_categories` / `nexus_get_tag_category_by_id` | Tag taxonomy v2 (theo game / ID / categories) |
+| `nexus_search_media` | Tìm media toàn site (ảnh/supporter/video) + sort random có seed (⚠️ endpoint Nexus thỉnh thoảng lỗi server-side "A name each was not found" — retry là được; filter `adultContent` của Nexus hỏng nên đã bỏ param) |
+| `nexus_get_opted_in_mods` | Mods opted-in Donation Points của 1 account |
+| `nexus_get_preferences` / `nexus_update_preferences` | Xem/cập nhật preferences (emails, auto-update, allow indexing...) |
+| `nexus_get_private_message_url` | URL deep-link vào PM Nexus |
+| `nexus_get_transactions` | Lịch sử DP transactions (⚠️ Nexus ẩn data với API key — cần OAuth) |
+| `nexus_get_uploads` | Upload activity (mods/collections/media) theo khoảng thời gian |
+| `nexus_get_user_donation_preferences` / `nexus_update_user_donation_preferences` | Xem/cập nhật donation prefs (DP, tip jar...) |
+| `nexus_get_user_monthly_report_by_id` | Monthly report theo accountId |
+| `nexus_request_media_upload_url` / `nexus_get_collection_revision_upload_url` | Lấy upload URL (media / revision zip) |
+| `nexus_update_about_me` / `nexus_update_country` | Cập nhật profile |
+| `nexus_create_message` | Gửi tin nhắn tới user (mutation) |
+| `nexus_close_collection_bug_report` | Đóng bug report của collection |
+| `nexus_submit_moderation_fix` | Nộp fix cho mod bị moderation |
+| `nexus_create_collection` / `nexus_edit_collection` | Tạo/sửa collection (manifest: author, summary, domainName, description BBCode...) |
+| `nexus_create_or_update_revision` / `nexus_update_revision` | Tạo/cập nhật revision (manifest + mod list) |
+| `nexus_publish_revision` / `nexus_retract_revision` / `nexus_discard_revision` | Publish / rút / xóa revision |
+| `nexus_discard_collection` / `nexus_list_collection` / `nexus_unlist_collection` | Quản lý vòng đời collection |
+| `nexus_create_changelog` / `nexus_update_changelog` | Changelog revision |
+| `nexus_create_tag` / `nexus_update_tag` / `nexus_discard_tag` | Quản lý tag của collection |
+| `nexus_add_badge_to_collection` / `nexus_remove_badge_from_collection` | Badge cho collection (owner) |
+| `nexus_reorder_item` | Đổi thứ tự mod trong collection |
+| `nexus_hide_comment` / `nexus_lock_comment` / `nexus_lock_comment_thread` / `nexus_pin_comment` / `nexus_unpin_comment` / `nexus_reorder_pinned_comments` / `nexus_clear_comment_moderation_status` / `nexus_clear_comment_thread_moderation_status` | Moderation comments/threads (moderator/owner — chưa live test destructive) |
+| `nexus_track_app_metric` | Báo metric cho app (downloads...) |
+| `nexus_block_mods_from_earning_dp` / `nexus_unblock_mods_from_earning_dp` | Chặn/bỏ chặn mods kiếm DP |
+| `nexus_upload_attachment` | Upload attachment (multipart) cho message |
+
 ## OAuth (tuỳ chọn)
 
 Một số mutation user-context (vd `nexus_update_mod_direct_download`) bị từ chối với API key — cần **OAuth Bearer token**. Server hỗ trợ OAuth2 + PKCE (S256) song song với API key: ưu tiên Bearer nếu còn hạn, tự refresh, fallback về API key khi hết/revoked.

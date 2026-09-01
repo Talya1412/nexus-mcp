@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Nexus Mods MCP server.
 
-Wraps the official Nexus Mods REST API v1 (https://api.nexusmods.com) as MCP
-tools: validate key, browse games, inspect mods/files, get download links,
-search by MD5, and manage tracked mods / endorsements.
+Wraps the official Nexus Mods REST API v1 (https://api.nexusmods.com) and
+GraphQL API v2 (https://api.nexusmods.com/v2/graphql) as 134 MCP tools:
+validate key, browse games, inspect mods/files, free-text search, get download
+links, download files (MD5+SHA256 verified), search by MD5, comment threads,
+collections lifecycle, endorsements, and user preference/mutation tools.
 
 Authentication: NEXUS_API_KEY (personal API key, https://www.nexusmods.com/users/myaccount?tab=api%20access)
 and optionally OAuth2 (NEXUS_OAUTH_CLIENT_ID [+ NEXUS_OAUTH_CLIENT_SECRET], registered by emailing
@@ -36,6 +38,7 @@ API_BASE = "https://api.nexusmods.com"
 GRAPHQL_PATH = "/v2/graphql"
 APP_NAME = "nexus-mcp"
 APP_VERSION = "1.0.0"
+__version__ = APP_VERSION
 
 RL_HEADERS = [
     "X-RL-Hourly-Limit",
@@ -4357,5 +4360,10 @@ async def nexus_upload_attachment(
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Entry point for the packaged `nexus-mcp` command (stdio transport)."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

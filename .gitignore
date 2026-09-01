@@ -4,3 +4,8 @@ __pycache__/
 .venv/
 venv/
 .env
+dist/
+build/
+.ruff_cache/
+.pytest_cache/
+.codegraph/

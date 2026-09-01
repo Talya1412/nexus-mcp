@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus-mcp"
+version = "1.0.0"
+description = "Nexus Mods MCP server - 134 tools over REST API v1 + GraphQL API v2"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Talya1412" }]
+requires-python = ">=3.10"
+keywords = ["mcp", "nexus-mods", "model-context-protocol", "api", "fastmcp"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "mcp>=1.0,<2",
+    "httpx>=0.27",
+    "pydantic>=2",
+]
+
+[project.urls]
+Homepage = "https://github.com/Talya1412/nexus-mcp"
+Issues = "https://github.com/Talya1412/nexus-mcp/issues"
+
+[project.scripts]
+nexus-mcp = "server:main"
+
+[tool.setuptools]
+py-modules = ["server"]

@@ -43,7 +43,7 @@ Or from a cloned repository:
 
 ```bash
 pip install -r requirements.txt
-python server.py
+python -m nexus_mcp
 ```
 
 ## Works with every MCP harness
@@ -316,9 +316,9 @@ v1 REST and v2 GraphQL.
 
 ```bash
 pip install -r requirements.txt
-python -m py_compile server.py          # syntax check
-python server.py                        # run on stdio
-python -c "import server; print(len(server.mcp._tool_manager.list_tools()))"  # tool count
+python -m compileall nexus_mcp           # syntax check
+python -m nexus_mcp                      # run on stdio
+python -c "import asyncio, nexus_mcp; print(len(asyncio.run(nexus_mcp.mcp.list_tools())))"  # tool count
 ```
 
 CI runs on every push: syntax compile, import check, and tool-count verification.

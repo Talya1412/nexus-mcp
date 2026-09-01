@@ -32,7 +32,7 @@ Homepage = "https://github.com/Talya1412/nexus-mcp"
 Issues = "https://github.com/Talya1412/nexus-mcp/issues"
 
 [project.scripts]
-nexus-mcp = "server:main"
+nexus-mcp = "nexus_mcp.server:main"
 
 [tool.setuptools]
-py-modules = ["server"]
+packages = ["nexus_mcp", "nexus_mcp.tools"]

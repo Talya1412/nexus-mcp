@@ -19,17 +19,18 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Syntax check
-        run: python -m py_compile server.py
+        run: python -m compileall nexus_mcp
 
       - name: Import + tool registry check
         run: |
           python -c "
-          import asyncio, server
+          import asyncio, nexus_mcp
 
-          tools = asyncio.run(server.mcp.list_tools())
+          tools = asyncio.run(nexus_mcp.mcp.list_tools())
           names = [t.name for t in tools]
           dups = sorted({n for n in names if names.count(n) > 1})
           assert not dups, f'duplicate tool names: {dups}'
           assert all(t.description for t in tools), 'tool with empty description found'
+          assert len(tools) == 135, f'expected 135 tools, got {len(tools)}'
           print(f'OK: {len(tools)} tools, no duplicates, all described')
           "

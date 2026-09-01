@@ -330,7 +330,9 @@ Tagged releases (`v*`) publish to PyPI automatically.
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the
 tool-authoring checklist, and conventions. Bug reports and feature requests use the
-issue templates; security issues go through
+issue templates; questions and ideas go to
+[Discussions](https://github.com/Talya1412/nexus-mcp/discussions); security issues go
+through
 [private vulnerability reporting](https://github.com/Talya1412/nexus-mcp/security/advisories/new).
 
 ## License

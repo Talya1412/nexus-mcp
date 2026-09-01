@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
-
-import uuid
 import base64
 import json
-import time
+import uuid
+from typing import Any, Literal
 
 import httpx
 from pydantic import Field
 
+from .._annotations import (
+    _DESTRUCTIVE_ANNOTATIONS,
+    _DESTRUCTIVE_IDEMPOTENT_ANNOTATIONS,
+    _IDEMPOTENT_MUTATION_ANNOTATIONS,
+    _MUTATING_ANNOTATIONS,
+)
 from .._core import (
     API_BASE,
     GRAPHQL_PATH,
@@ -23,20 +27,13 @@ from .._core import (
     _qlit,
     _split_ids,
 )
-
-from .._annotations import (
-    _DESTRUCTIVE_ANNOTATIONS,
-    _DESTRUCTIVE_IDEMPOTENT_ANNOTATIONS,
-    _IDEMPOTENT_MUTATION_ANNOTATIONS,
-    _MUTATING_ANNOTATIONS,
-)
-
 from .._server import mcp
+
 
 @mcp.tool(name="nexus_update_about_me", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update your About Me (v2)"})
 async def nexus_update_about_me(
     about: str = Field(..., description="New About Me text.", min_length=1),
-    user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
+    user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
     """Update a user's About Me profile text via v2 GraphQL.
 
@@ -51,8 +48,8 @@ async def nexus_update_about_me(
 
 @mcp.tool(name="nexus_update_country", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update your country (v2)"})
 async def nexus_update_country(
-    country: Optional[str] = Field(default=None, description="Country name/code. Omit to clear."),
-    user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
+    country: str | None = Field(default=None, description="Country name/code. Omit to clear."),
+    user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
     """Update a user's country via v2 GraphQL.
 
@@ -67,32 +64,32 @@ async def nexus_update_country(
 
 @mcp.tool(name="nexus_update_preferences", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update site preferences (v2)"})
 async def nexus_update_preferences(
-    default_mods_tab: Optional[Literal["NEW", "TRENDING", "POPULAR", "RANDOM", "UPDATED"]] = Field(default=None, description="Default mods tab."),
-    default_mods_tab_time_range: Optional[Literal["ALL_TIME", "ONE_DAY", "ONE_WEEK", "TWO_WEEKS", "FOUR_WEEKS", "ONE_YEAR"]] = Field(default=None, description="Default mods tab time range."),
-    default_media_tab: Optional[Literal["NEW", "TRENDING", "POPULAR", "RANDOM"]] = Field(default=None, description="Default media tab."),
-    default_media_tab_time_range: Optional[Literal["ALL_TIME", "ONE_DAY", "ONE_WEEK", "TWO_WEEKS", "FOUR_WEEKS", "ONE_YEAR"]] = Field(default=None, description="Default media tab time range."),
-    default_order: Optional[Literal["BY_RECENT_FILES", "BY_ENDORSEMENTS", "BY_DOWNLOADS", "BY_UNIQUE_DOWNLOADS", "BY_LAST_UPDATED_FILE", "BY_AUTHOR_NAME", "BY_FILE_NAME", "BY_FILE_SIZE", "RANDOM_SORTING", "LAST_COMMENT"]] = Field(default=None, description="Default listing order."),
-    default_search_view: Optional[Literal["STANDARD", "LIST", "COMPACT"]] = Field(default=None, description="Default search view."),
-    default_search_type: Optional[Literal["POP_UP_BOX", "SEPARATE_PAGE"]] = Field(default=None, description="Default search type."),
-    results: Optional[Literal["RESULTS_20", "RESULTS_40", "RESULTS_60", "RESULTS_80"]] = Field(default=None, description="Results per page."),
-    comments: Optional[Literal["COMMENTS_10", "COMMENTS_20", "COMMENTS_30", "COMMENTS_40", "COMMENTS_50"]] = Field(default=None, description="Comments per page."),
-    dl_location: Optional[Literal["NEXUS_CDN", "AMSTERDAM", "PRAGUE", "CHICAGO", "LOS_ANGELES", "MIAMI"]] = Field(default=None, description="Preferred download location."),
-    download: Optional[Literal["ALL_CONTENT", "GAMES", "MODS", "COLLECTIONS", "IMAGES", "VIDEOS", "USERS"]] = Field(default=None, description="Download method scope."),
-    reminder: Optional[Literal["NEVER", "DAYS_1", "DAYS_3", "DAYS_7", "DAYS_14", "DAYS_28"]] = Field(default=None, description="Endorsement reminder window."),
-    image_showcase: Optional[Literal["NOT_SET", "CHOOSE_ON_PER_IMAGE_BASIS", "TURN_OFF_IMAGES", "TURN_ON_IMAGES"]] = Field(default=None, description="Image showcase mode."),
-    adult: Optional[bool] = Field(default=None, description="Show adult content."),
-    adult_blur_images: Optional[bool] = Field(default=None, description="Blur adult images."),
-    bubble_reply: Optional[bool] = Field(default=None, description="Bubble reply notifications."),
-    disable_profile_activity: Optional[bool] = Field(default=None, description="Disable profile activity feed."),
-    display_last_activity: Optional[bool] = Field(default=None, description="Display last activity."),
-    marketing_emails: Optional[bool] = Field(default=None, description="Receive marketing emails."),
-    notifications_active: Optional[bool] = Field(default=None, description="Notifications enabled."),
-    notifications_game_specific: Optional[bool] = Field(default=None, description="Game-specific notifications."),
-    subfeeds_comments_your: Optional[bool] = Field(default=None, description="Subfeed: comments on your content."),
-    subfeeds_activity_your: Optional[bool] = Field(default=None, description="Subfeed: activity on your content."),
-    subfeeds_comments_tracked: Optional[bool] = Field(default=None, description="Subfeed: comments on tracked content."),
-    subfeeds_activity_tracked: Optional[bool] = Field(default=None, description="Subfeed: activity on tracked content."),
-    subfeeds_author_tracked: Optional[bool] = Field(default=None, description="Subfeed: tracked authors."),
+    default_mods_tab: Literal["NEW", "TRENDING", "POPULAR", "RANDOM", "UPDATED"] | None = Field(default=None, description="Default mods tab."),
+    default_mods_tab_time_range: Literal["ALL_TIME", "ONE_DAY", "ONE_WEEK", "TWO_WEEKS", "FOUR_WEEKS", "ONE_YEAR"] | None = Field(default=None, description="Default mods tab time range."),
+    default_media_tab: Literal["NEW", "TRENDING", "POPULAR", "RANDOM"] | None = Field(default=None, description="Default media tab."),
+    default_media_tab_time_range: Literal["ALL_TIME", "ONE_DAY", "ONE_WEEK", "TWO_WEEKS", "FOUR_WEEKS", "ONE_YEAR"] | None = Field(default=None, description="Default media tab time range."),
+    default_order: Literal["BY_RECENT_FILES", "BY_ENDORSEMENTS", "BY_DOWNLOADS", "BY_UNIQUE_DOWNLOADS", "BY_LAST_UPDATED_FILE", "BY_AUTHOR_NAME", "BY_FILE_NAME", "BY_FILE_SIZE", "RANDOM_SORTING", "LAST_COMMENT"] | None = Field(default=None, description="Default listing order."),
+    default_search_view: Literal["STANDARD", "LIST", "COMPACT"] | None = Field(default=None, description="Default search view."),
+    default_search_type: Literal["POP_UP_BOX", "SEPARATE_PAGE"] | None = Field(default=None, description="Default search type."),
+    results: Literal["RESULTS_20", "RESULTS_40", "RESULTS_60", "RESULTS_80"] | None = Field(default=None, description="Results per page."),
+    comments: Literal["COMMENTS_10", "COMMENTS_20", "COMMENTS_30", "COMMENTS_40", "COMMENTS_50"] | None = Field(default=None, description="Comments per page."),
+    dl_location: Literal["NEXUS_CDN", "AMSTERDAM", "PRAGUE", "CHICAGO", "LOS_ANGELES", "MIAMI"] | None = Field(default=None, description="Preferred download location."),
+    download: Literal["ALL_CONTENT", "GAMES", "MODS", "COLLECTIONS", "IMAGES", "VIDEOS", "USERS"] | None = Field(default=None, description="Download method scope."),
+    reminder: Literal["NEVER", "DAYS_1", "DAYS_3", "DAYS_7", "DAYS_14", "DAYS_28"] | None = Field(default=None, description="Endorsement reminder window."),
+    image_showcase: Literal["NOT_SET", "CHOOSE_ON_PER_IMAGE_BASIS", "TURN_OFF_IMAGES", "TURN_ON_IMAGES"] | None = Field(default=None, description="Image showcase mode."),
+    adult: bool | None = Field(default=None, description="Show adult content."),
+    adult_blur_images: bool | None = Field(default=None, description="Blur adult images."),
+    bubble_reply: bool | None = Field(default=None, description="Bubble reply notifications."),
+    disable_profile_activity: bool | None = Field(default=None, description="Disable profile activity feed."),
+    display_last_activity: bool | None = Field(default=None, description="Display last activity."),
+    marketing_emails: bool | None = Field(default=None, description="Receive marketing emails."),
+    notifications_active: bool | None = Field(default=None, description="Notifications enabled."),
+    notifications_game_specific: bool | None = Field(default=None, description="Game-specific notifications."),
+    subfeeds_comments_your: bool | None = Field(default=None, description="Subfeed: comments on your content."),
+    subfeeds_activity_your: bool | None = Field(default=None, description="Subfeed: activity on your content."),
+    subfeeds_comments_tracked: bool | None = Field(default=None, description="Subfeed: comments on tracked content."),
+    subfeeds_activity_tracked: bool | None = Field(default=None, description="Subfeed: activity on tracked content."),
+    subfeeds_author_tracked: bool | None = Field(default=None, description="Subfeed: tracked authors."),
 ) -> str:
     """Update the current user's site preferences via v2 GraphQL.
 
@@ -142,13 +139,13 @@ async def nexus_update_preferences(
     annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update DP donation preferences (v2)"},
 )
 async def nexus_update_user_donation_preferences(
-    donate_straight: Optional[bool] = Field(default=None, description="Donate DP straight to authors."),
-    donate_authorpremium: Optional[bool] = Field(default=None, description="Donate to author premium share."),
-    donate_ownpremium: Optional[bool] = Field(default=None, description="Donate from own premium share."),
-    donate_profile: Optional[bool] = Field(default=None, description="Donate from profile."),
-    donate_premium_max: Optional[int] = Field(default=None, description="Max premium donation amount."),
-    dp_opted_in: Optional[bool] = Field(default=None, description="Opt your mods into Donation Points."),
-    paypal: Optional[str] = Field(default=None, description="PayPal address for payouts."),
+    donate_straight: bool | None = Field(default=None, description="Donate DP straight to authors."),
+    donate_authorpremium: bool | None = Field(default=None, description="Donate to author premium share."),
+    donate_ownpremium: bool | None = Field(default=None, description="Donate from own premium share."),
+    donate_profile: bool | None = Field(default=None, description="Donate from profile."),
+    donate_premium_max: int | None = Field(default=None, description="Max premium donation amount."),
+    dp_opted_in: bool | None = Field(default=None, description="Opt your mods into Donation Points."),
+    paypal: str | None = Field(default=None, description="PayPal address for payouts."),
 ) -> str:
     """Update the current user's Donation Points preferences via v2 GraphQL.
 
@@ -220,7 +217,7 @@ async def nexus_close_collection_bug_report(
 @mcp.tool(name="nexus_submit_moderation_fix", annotations={**_MUTATING_ANNOTATIONS, "title": "Submit a moderation fix (v2)"})
 async def nexus_submit_moderation_fix(
     moderation_id: int = Field(..., description="Moderation ID to fix.", ge=1),
-    description: Optional[str] = Field(default=None, description="Description of the fix."),
+    description: str | None = Field(default=None, description="Description of the fix."),
 ) -> str:
     """Submit a fix for an active moderation on your content (v2 GraphQL).
 
@@ -237,11 +234,11 @@ def _collection_manifest(
     name: str,
     domain_name: str,
     author: str,
-    summary: Optional[str],
-    description: Optional[str],
-    author_url: Optional[str],
-    game_versions: Optional[str],
-    mods_json: Optional[str],
+    summary: str | None,
+    description: str | None,
+    author_url: str | None,
+    game_versions: str | None,
+    mods_json: str | None,
 ) -> dict[str, Any]:
     info: dict[str, Any] = {"name": name, "domainName": domain_name, "author": author}
     if summary is not None:
@@ -263,15 +260,15 @@ async def nexus_create_collection(
     name: str = Field(..., description="Collection name.", min_length=1),
     domain_name: str = Field(..., description="Game domain name, e.g. 'skyrimspecialedition'."),
     author: str = Field(..., description="Author display name."),
-    summary: Optional[str] = Field(default=None, description="Short summary."),
-    description: Optional[str] = Field(default=None, description="Long description (BBCode)."),
-    author_url: Optional[str] = Field(default=None, description="Author profile URL."),
-    game_versions: Optional[str] = Field(default=None, description="Comma-separated game versions."),
+    summary: str | None = Field(default=None, description="Short summary."),
+    description: str | None = Field(default=None, description="Long description (BBCode)."),
+    author_url: str | None = Field(default=None, description="Author profile URL."),
+    game_versions: str | None = Field(default=None, description="Comma-separated game versions."),
     adult_content: bool = Field(default=False, description="Whether the collection contains adult resources."),
-    collection_schema_id: Optional[int] = Field(default=None, description="Collection schema ID."),
-    mods_json: Optional[str] = Field(default=None, description="JSON array of mods: [{name, version, optional, domainName, source: {type: nexus|direct|browse|manual|bundle, modId, fileId, md5, fileSize, updatePolicy, logicalFilename, fileExpression, url, adultContent}, author}]. Required for a revision."),
-    collection_uuid: Optional[str] = Field(default=None, description="Client UUID for the collection. Auto-generated if omitted."),
-    collection_data_json: Optional[str] = Field(default=None, description="Full CollectionPayload JSON overriding all other params."),
+    collection_schema_id: int | None = Field(default=None, description="Collection schema ID."),
+    mods_json: str | None = Field(default=None, description="JSON array of mods: [{name, version, optional, domainName, source: {type: nexus|direct|browse|manual|bundle, modId, fileId, md5, fileSize, updatePolicy, logicalFilename, fileExpression, url, adultContent}, author}]. Required for a revision."),
+    collection_uuid: str | None = Field(default=None, description="Client UUID for the collection. Auto-generated if omitted."),
+    collection_data_json: str | None = Field(default=None, description="Full CollectionPayload JSON overriding all other params."),
 ) -> str:
     """Create a new collection and its first draft revision (v2 GraphQL).
 
@@ -304,12 +301,12 @@ async def nexus_create_collection(
 @mcp.tool(name="nexus_edit_collection", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Edit a collection (v2)"})
 async def nexus_edit_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
-    name: Optional[str] = Field(default=None, description="New name."),
-    summary: Optional[str] = Field(default=None, description="New summary."),
-    description: Optional[str] = Field(default=None, description="New description (BBCode)."),
-    category_id: Optional[int] = Field(default=None, description="New category ID."),
-    allow_user_media: Optional[bool] = Field(default=None, description="Allow user media."),
-    manually_verify_media: Optional[bool] = Field(default=None, description="Manually verify media."),
+    name: str | None = Field(default=None, description="New name."),
+    summary: str | None = Field(default=None, description="New summary."),
+    description: str | None = Field(default=None, description="New description (BBCode)."),
+    category_id: int | None = Field(default=None, description="New category ID."),
+    allow_user_media: bool | None = Field(default=None, description="Allow user media."),
+    manually_verify_media: bool | None = Field(default=None, description="Manually verify media."),
 ) -> str:
     """Edit a collection's metadata (must own the collection) via v2 GraphQL.
 
@@ -338,17 +335,17 @@ async def nexus_edit_collection(
 )
 async def nexus_create_or_update_revision(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
-    mods_json: Optional[str] = Field(default=None, description="JSON array of mods: [{name, version, optional, domainName, source: {...}, author}]."),
-    name: Optional[str] = Field(default=None, description="Collection name override."),
-    summary: Optional[str] = Field(default=None, description="Summary override."),
-    description: Optional[str] = Field(default=None, description="Description override."),
-    domain_name: Optional[str] = Field(default=None, description="Game domain override."),
-    author: Optional[str] = Field(default=None, description="Author override."),
-    author_url: Optional[str] = Field(default=None, description="Author URL override."),
-    game_versions: Optional[str] = Field(default=None, description="Comma-separated game versions override."),
+    mods_json: str | None = Field(default=None, description="JSON array of mods: [{name, version, optional, domainName, source: {...}, author}]."),
+    name: str | None = Field(default=None, description="Collection name override."),
+    summary: str | None = Field(default=None, description="Summary override."),
+    description: str | None = Field(default=None, description="Description override."),
+    domain_name: str | None = Field(default=None, description="Game domain override."),
+    author: str | None = Field(default=None, description="Author override."),
+    author_url: str | None = Field(default=None, description="Author URL override."),
+    game_versions: str | None = Field(default=None, description="Comma-separated game versions override."),
     adult_content: bool = Field(default=False, description="Whether the revision contains adult resources."),
-    collection_uuid: Optional[str] = Field(default=None, description="Client UUID. Auto-generated if omitted."),
-    collection_data_json: Optional[str] = Field(default=None, description="Full CollectionPayload JSON overriding all other params."),
+    collection_uuid: str | None = Field(default=None, description="Client UUID. Auto-generated if omitted."),
+    collection_data_json: str | None = Field(default=None, description="Full CollectionPayload JSON overriding all other params."),
 ) -> str:
     """Create a new draft revision or update the existing draft (v2 GraphQL).
 
@@ -378,8 +375,8 @@ async def nexus_create_or_update_revision(
 @mcp.tool(name="nexus_update_revision", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update a revision (v2)"})
 async def nexus_update_revision(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
-    installation_info: Optional[str] = Field(default=None, description="Installation instructions."),
-    adult_content: Optional[bool] = Field(default=None, description="Whether the revision contains adult resources."),
+    installation_info: str | None = Field(default=None, description="Installation instructions."),
+    adult_content: bool | None = Field(default=None, description="Whether the revision contains adult resources."),
 ) -> str:
     """Update a collection revision's metadata (must own it) via v2 GraphQL.
 
@@ -401,8 +398,8 @@ async def nexus_update_revision(
 @mcp.tool(name="nexus_publish_revision", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Publish a revision (v2)"})
 async def nexus_publish_revision(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
-    collection_status: Optional[Literal["listed", "unlisted", "under_moderation", "discarded"]] = Field(default=None, description="Status to publish with."),
-    has_adult_resources: Optional[bool] = Field(default=None, description="Whether the revision contains adult resources."),
+    collection_status: Literal["listed", "unlisted", "under_moderation", "discarded"] | None = Field(default=None, description="Status to publish with."),
+    has_adult_resources: bool | None = Field(default=None, description="Whether the revision contains adult resources."),
 ) -> str:
     """Publish a draft collection revision (must own the collection) via v2 GraphQL.
 
@@ -442,7 +439,7 @@ async def nexus_retract_revision(
 async def nexus_discard_revision(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
     revision_number: int = Field(..., description="Revision number.", ge=1),
-    reason: Optional[str] = Field(default=None, description="Discard reason."),
+    reason: str | None = Field(default=None, description="Discard reason."),
 ) -> str:
     """Discard a collection revision (must own the collection) via v2 GraphQL.
 
@@ -545,10 +542,10 @@ async def nexus_update_changelog(
 @mcp.tool(name="nexus_create_tag", annotations={**_MUTATING_ANNOTATIONS, "title": "Create a tag (v2)"})
 async def nexus_create_tag(
     name: str = Field(..., description="Tag name.", min_length=1),
-    category_id: Optional[int] = Field(default=None, description="Tag category ID."),
-    game_ids: Optional[str] = Field(default=None, description="Comma-separated game IDs to attach."),
-    global_tag: Optional[bool] = Field(default=None, description="Create as global tag."),
-    adult: Optional[bool] = Field(default=None, description="Adult content tag."),
+    category_id: int | None = Field(default=None, description="Tag category ID."),
+    game_ids: str | None = Field(default=None, description="Comma-separated game IDs to attach."),
+    global_tag: bool | None = Field(default=None, description="Create as global tag."),
+    adult: bool | None = Field(default=None, description="Adult content tag."),
 ) -> str:
     """Create a new tag (moderator permissions may be required) via v2 GraphQL.
 
@@ -572,11 +569,11 @@ async def nexus_create_tag(
 @mcp.tool(name="nexus_update_tag", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update a tag (v2)"})
 async def nexus_update_tag(
     tag_id: int = Field(..., description="Tag ID.", ge=1),
-    name: Optional[str] = Field(default=None, description="New tag name."),
-    category_id: Optional[int] = Field(default=None, description="New tag category ID."),
-    game_ids: Optional[str] = Field(default=None, description="Comma-separated game IDs to attach."),
-    global_tag: Optional[bool] = Field(default=None, description="Mark as global tag."),
-    adult: Optional[bool] = Field(default=None, description="Adult content tag."),
+    name: str | None = Field(default=None, description="New tag name."),
+    category_id: int | None = Field(default=None, description="New tag category ID."),
+    game_ids: str | None = Field(default=None, description="Comma-separated game IDs to attach."),
+    global_tag: bool | None = Field(default=None, description="Mark as global tag."),
+    adult: bool | None = Field(default=None, description="Adult content tag."),
 ) -> str:
     """Update an existing tag (moderator permissions may be required) via v2 GraphQL.
 
@@ -680,7 +677,7 @@ async def nexus_reorder_item(
 async def nexus_hide_comment(
     comment_id: int = Field(..., description="Comment ID to hide.", ge=1),
     reason: str = Field(..., description="Public reason for hiding.", min_length=1),
-    internal_reason: Optional[str] = Field(default=None, description="Internal reason (moderators only)."),
+    internal_reason: str | None = Field(default=None, description="Internal reason (moderators only)."),
 ) -> str:
     """Hide a comment (moderator permissions required) via v2 GraphQL.
 
@@ -828,8 +825,8 @@ async def nexus_track_app_metric(
     event_type: Literal["collection_started", "collection_completed"] = Field(..., description="Metric event type."),
     entity_type: Literal["collection"] = Field(..., description="Metric entity type."),
     entity_id: str = Field(..., description="Entity ID (e.g. collection id).", min_length=1),
-    client_string: Optional[str] = Field(default=None, description="Client identifier string."),
-    metadata_json: Optional[str] = Field(default=None, description="Optional JSON metadata object."),
+    client_string: str | None = Field(default=None, description="Client identifier string."),
+    metadata_json: str | None = Field(default=None, description="Optional JSON metadata object."),
 ) -> str:
     """Report an app metric (e.g. a Vortex collection install event) via v2 GraphQL.
 
@@ -853,7 +850,7 @@ async def nexus_track_app_metric(
     annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Block a user's mods from earning DP (v2)"},
 )
 async def nexus_block_mods_from_earning_dp(
-    user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
+    user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
     """Block a user's mods from earning Donation Points via v2 GraphQL.
 
@@ -873,7 +870,7 @@ async def nexus_block_mods_from_earning_dp(
     annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unblock a user's mods from earning DP (v2)"},
 )
 async def nexus_unblock_mods_from_earning_dp(
-    user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
+    user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
     """Unblock a user's mods from earning Donation Points via v2 GraphQL.
 
@@ -904,7 +901,7 @@ async def nexus_upload_attachment(
     """
     try:
         content = base64.b64decode(content_base64, validate=True)
-    except Exception:
+    except ValueError:  # binascii.Error subclasses ValueError
         return "Error: content_base64 is not valid base64."
     query = (
         "mutation($file: Upload!) { uploadAttachment(file: $file) "
@@ -924,8 +921,8 @@ async def nexus_upload_attachment(
         payload = response.json()
     except NexusApiError as exc:
         return f"Error: {exc}"
-    except Exception as exc:
-        return f"Error: upload failed: {exc}"
+    except (httpx.HTTPError, ValueError, OSError) as exc:
+        return f"Error: upload failed: {type(exc).__name__}: {exc}"
     if response.status_code != 200 or payload.get("errors"):
         errors = json.dumps(payload.get("errors") or payload)[:500]
         return f"Error: HTTP {response.status_code} {errors}"

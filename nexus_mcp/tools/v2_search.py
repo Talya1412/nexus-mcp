@@ -2,25 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
-
 import json
+from typing import Any, Literal
 
 from pydantic import Field
-
-from .._core import (
-    DOMAIN_DESC,
-    _GAME_ID_QUERY,
-    _MOD_SEARCH_FIELDS,
-    _gql_call,
-    _gql_page,
-)
 
 from .._annotations import (
     _MUTATING_ANNOTATIONS,
     _READ_ONLY_ANNOTATIONS,
 )
-
+from .._core import (
+    _GAME_ID_QUERY,
+    _MOD_SEARCH_FIELDS,
+    DOMAIN_DESC,
+    _gql_call,
+    _gql_page,
+)
 from .._server import mcp
 
 _SORT_KEY_MAP = {
@@ -45,7 +42,7 @@ query SearchMods($filter: ModsFilter, $sort: [ModsSort!], $offset: Int, $count: 
     }
   }
 }
-""" % _MOD_SEARCH_FIELDS
+""" % _MOD_SEARCH_FIELDS  # noqa: UP031 - GraphQL braces conflict with str.format/f-strings; % is intentional
 
 
 def _mods_sort(sort: str, direction: str) -> list[dict[str, Any]]:
@@ -58,15 +55,15 @@ def _mods_sort(sort: str, direction: str) -> list[dict[str, Any]]:
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search Nexus mods"},
 )
 async def nexus_search_mods(
-    term: Optional[str] = Field(default=None, description="Free-text term matched against mod names (wildcard match). Optional."),
-    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    term: str | None = Field(default=None, description="Free-text term matched against mod names (wildcard match). Optional."),
+    domain_name: str | None = Field(default=None, description=DOMAIN_DESC),
     sort: Literal[
         "endorsements", "downloads", "unique_downloads", "created_at", "updated_at",
         "name", "relevance", "size", "last_comment",
     ] = Field(default="endorsements", description="Sort key. Array order is precedence but only one key is exposed here."),
     direction: Literal["DESC", "ASC"] = Field(default="DESC", description="Sort direction."),
-    min_endorsements: Optional[int] = Field(default=None, description="Only mods with at least this many endorsements.", ge=0),
-    min_downloads: Optional[int] = Field(default=None, description="Only mods with at least this many downloads.", ge=0),
+    min_endorsements: int | None = Field(default=None, description="Only mods with at least this many endorsements.", ge=0),
+    min_downloads: int | None = Field(default=None, description="Only mods with at least this many downloads.", ge=0),
     exclude_adult: bool = Field(default=False, description="If true, exclude adult-content mods from results."),
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page. Server silently caps page size (~50-80); check '_returned'.", ge=1, le=100),
@@ -199,8 +196,8 @@ query UserByName($name: String!) {
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get public user profile (v2)"},
 )
 async def nexus_get_user_v2(
-    member_id: Optional[int] = Field(default=None, description="Numeric member ID (user_id from nexus_validate_key).", ge=1),
-    username: Optional[str] = Field(default=None, description="Exact Nexus username, e.g. 'Talya1412'."),
+    member_id: int | None = Field(default=None, description="Numeric member ID (user_id from nexus_validate_key).", ge=1),
+    username: str | None = Field(default=None, description="Exact Nexus username, e.g. 'Talya1412'."),
 ) -> str:
     """Get a public Nexus Mods user profile by member ID or exact username.
 
@@ -248,8 +245,8 @@ query SearchCollections($filter: CollectionsSearchFilter, $sort: [CollectionsSea
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search mod collections (v2)"},
 )
 async def nexus_search_collections(
-    term: Optional[str] = Field(default=None, description="Free-text general search term (matches name/summary/etc). Optional."),
-    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    term: str | None = Field(default=None, description="Free-text general search term (matches name/summary/etc). Optional."),
+    domain_name: str | None = Field(default=None, description=DOMAIN_DESC),
     sort: Literal[
         "endorsements", "downloads", "created_at", "updated_at", "rating", "recent_rating", "relevance",
     ] = Field(default="endorsements", description="Sort key."),
@@ -435,7 +432,7 @@ query SearchGames($filter: GamesSearchFilter, $sort: [GamesSearchSort!], $offset
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search Nexus games (v2)"},
 )
 async def nexus_search_games(
-    term: Optional[str] = Field(default=None, description="Free-text term matched against game names (wildcard match). Optional."),
+    term: str | None = Field(default=None, description="Free-text term matched against game names (wildcard match). Optional."),
     sort: Literal["downloads", "mods", "collections", "name", "approved", "relevance"] = Field(
         default="downloads", description="Sort key."
     ),
@@ -452,7 +449,7 @@ async def nexus_search_games(
         JSON {totalCount, _returned, nodes: [{domainName, name, id, modCount,
         downloadCount, genre, forumUrl, supportsVortex, approvedAt}]}.
     """
-    flt: Optional[dict[str, Any]] = None
+    flt: dict[str, Any] | None = None
     if term:
         flt = {"name": [{"value": term, "op": "WILDCARD"}]}
     data = await _gql_call(

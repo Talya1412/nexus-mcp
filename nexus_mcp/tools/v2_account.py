@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
-
-import uuid
+from typing import Any, Literal
 
 from pydantic import Field
 
+from .._annotations import (
+    _MUTATING_ANNOTATIONS,
+    _READ_ONLY_ANNOTATIONS,
+)
 from .._core import (
     _MOD_SEARCH_FIELDS,
     _gql_call,
@@ -15,20 +17,15 @@ from .._core import (
     _opt,
     _split_ids,
 )
-
-from .._annotations import (
-    _MUTATING_ANNOTATIONS,
-    _READ_ONLY_ANNOTATIONS,
-)
-
 from .._server import mcp
+
 
 @mcp.tool(
     name="nexus_get_age_verification_info",
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get age verification info (v2)"},
 )
 async def nexus_get_age_verification_info(
-    user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
+    user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
     """Get a user's age verification status (v2 GraphQL).
 
@@ -211,10 +208,10 @@ async def nexus_get_legacy_mods(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "List v2 tags (v2)"},
 )
 async def nexus_get_tags_v2(
-    game_id: Optional[int] = Field(default=None, description="Filter by game ID."),
-    category_id: Optional[int] = Field(default=None, description="Filter by tag category ID."),
-    include_global: Optional[bool] = Field(default=None, description="Include global tags."),
-    include_discarded: Optional[bool] = Field(default=None, description="Include discarded tags."),
+    game_id: int | None = Field(default=None, description="Filter by game ID."),
+    category_id: int | None = Field(default=None, description="Filter by tag category ID."),
+    include_global: bool | None = Field(default=None, description="Include global tags."),
+    include_discarded: bool | None = Field(default=None, description="Include discarded tags."),
 ) -> str:
     """List tags with optional filters (v2 GraphQL).
 
@@ -283,14 +280,14 @@ async def nexus_get_tag_category_by_id(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search media (images/videos) (v2)"},
 )
 async def nexus_search_media(
-    general_search: Optional[str] = Field(default=None, description="Free-text search."),
-    game_id: Optional[int] = Field(default=None, description="Filter by game ID."),
-    game_name: Optional[str] = Field(default=None, description="Filter by game name."),
-    owner: Optional[str] = Field(default=None, description="Filter by owner."),
-    media_type: Optional[Literal["image", "video"]] = Field(default=None, description="Filter by media type."),
-    sort: Optional[Literal["newest", "oldest", "rating", "views", "random"]] = Field(default=None, description="Sort order."),
-    random_seed: Optional[int] = Field(default=None, description="Seed for random sort."),
-    view_user_blocked_content: Optional[bool] = Field(default=None, description="Include content from blocked users."),
+    general_search: str | None = Field(default=None, description="Free-text search."),
+    game_id: int | None = Field(default=None, description="Filter by game ID."),
+    game_name: str | None = Field(default=None, description="Filter by game name."),
+    owner: str | None = Field(default=None, description="Filter by owner."),
+    media_type: Literal["image", "video"] | None = Field(default=None, description="Filter by media type."),
+    sort: Literal["newest", "oldest", "rating", "views", "random"] | None = Field(default=None, description="Sort order."),
+    random_seed: int | None = Field(default=None, description="Seed for random sort."),
+    view_user_blocked_content: bool | None = Field(default=None, description="Include content from blocked users."),
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
@@ -318,7 +315,7 @@ async def nexus_search_media(
         flt["owner"] = [{"value": owner}]
     if _opt(media_type) is not None:
         flt["type"] = [{"value": media_type}]
-    sort_arg: Optional[list[dict[str, Any]]] = None
+    sort_arg: list[dict[str, Any]] | None = None
     resolved_sort = _opt(sort)
     if resolved_sort == "newest":
         sort_arg = [{"createdAt": {"direction": "DESC"}}]
@@ -416,13 +413,13 @@ async def nexus_get_private_message_url(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get DP transactions (v2)"},
 )
 async def nexus_get_transactions(
-    start: Optional[int] = Field(default=None, description="Pagination start.", ge=0),
-    per_page: Optional[int] = Field(default=None, description="Results per page.", ge=1, le=100),
-    order_dir: Optional[str] = Field(default=None, description="Order direction."),
-    order_column: Optional[str] = Field(default=None, description="Order column."),
-    account_id: Optional[int] = Field(default=None, description="Filter by account ID."),
-    bank_id: Optional[int] = Field(default=None, description="Filter by bank ID."),
-    search: Optional[str] = Field(default=None, description="Search string."),
+    start: int | None = Field(default=None, description="Pagination start.", ge=0),
+    per_page: int | None = Field(default=None, description="Results per page.", ge=1, le=100),
+    order_dir: str | None = Field(default=None, description="Order direction."),
+    order_column: str | None = Field(default=None, description="Order column."),
+    account_id: int | None = Field(default=None, description="Filter by account ID."),
+    bank_id: int | None = Field(default=None, description="Filter by bank ID."),
+    search: str | None = Field(default=None, description="Search string."),
 ) -> str:
     """Get Donation Points transactions for the current user (v2 GraphQL).
 
@@ -450,14 +447,14 @@ async def nexus_get_uploads(
     per_page: int = Field(default=20, description="Results per page.", ge=1, le=100),
     order_column: str = Field(default="createdAt", description="Order column (e.g. createdAt)."),
     order_dir: str = Field(default="DESC", description="Order direction (ASC/DESC)."),
-    upload_id: Optional[str] = Field(default=None, description="Filter by upload ID."),
-    search: Optional[str] = Field(default=None, description="Search string."),
-    filter: Optional[str] = Field(default=None, description="Filter string."),
-    upload_type: Optional[str] = Field(default=None, description="Filter by upload type."),
-    game_id: Optional[int] = Field(default=None, description="Filter by game ID."),
-    user_id: Optional[int] = Field(default=None, description="Filter by user ID."),
-    file_id: Optional[int] = Field(default=None, description="Filter by file ID."),
-    mod_id: Optional[int] = Field(default=None, description="Filter by mod ID."),
+    upload_id: str | None = Field(default=None, description="Filter by upload ID."),
+    search: str | None = Field(default=None, description="Search string."),
+    filter: str | None = Field(default=None, description="Filter string."),
+    upload_type: str | None = Field(default=None, description="Filter by upload type."),
+    game_id: int | None = Field(default=None, description="Filter by game ID."),
+    user_id: int | None = Field(default=None, description="Filter by user ID."),
+    file_id: int | None = Field(default=None, description="Filter by file ID."),
+    mod_id: int | None = Field(default=None, description="Filter by mod ID."),
 ) -> str:
     """List mod file uploads with scan status (v2 GraphQL).
 
@@ -518,8 +515,8 @@ async def nexus_get_user_monthly_report_by_id(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Request media upload URL (v2)"},
 )
 async def nexus_request_media_upload_url(
-    filename: Optional[str] = Field(default=None, description="File name including extension."),
-    mime_type: Optional[str] = Field(default=None, description="MIME type."),
+    filename: str | None = Field(default=None, description="File name including extension."),
+    mime_type: str | None = Field(default=None, description="MIME type."),
 ) -> str:
     """Request a presigned URL for uploading media (v2 GraphQL).
 

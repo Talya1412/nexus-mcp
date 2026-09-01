@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
-
+import contextlib
 import hashlib
 import json
 import os
 import re
-import time
 import urllib.parse
 from pathlib import Path
+from typing import Any, Literal
 
 import httpx
-from pydantic.fields import FieldInfo
 from pydantic import Field
 
 from .._core import (
@@ -23,8 +21,8 @@ from .._core import (
     _call,
     _dump,
 )
-
 from .._server import mcp
+
 
 @mcp.tool(
     name="nexus_validate_key",
@@ -62,7 +60,7 @@ async def nexus_validate_key() -> str:
 )
 async def nexus_get_games(
     include_unapproved: bool = Field(default=False, description="Include games that are not yet fully approved on Nexus."),
-    filter: Optional[str] = Field(
+    filter: str | None = Field(
         default=None,
         description="Optional case-insensitive substring filter applied client-side to game name/domain_name (reduces output size).",
     ),
@@ -255,7 +253,7 @@ async def nexus_get_updated_mods(
 async def nexus_get_mod_files(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
-    category: Optional[str] = Field(
+    category: str | None = Field(
         default=None,
         description=(
             "Optional comma-separated file-category filter (case-insensitive). "
@@ -307,11 +305,11 @@ async def nexus_get_download_link(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
     file_id: int = Field(..., description="Numeric file ID.", ge=1),
-    key: Optional[str] = Field(
+    key: str | None = Field(
         default=None,
         description="'key' from a .nxm download link. REQUIRED for non-premium accounts (403 otherwise).",
     ),
-    expires: Optional[int] = Field(
+    expires: int | None = Field(
         default=None,
         description="'expires' (unix epoch seconds, absolute timestamp) from a .nxm download link. REQUIRED for non-premium accounts.",
     ),
@@ -352,15 +350,15 @@ async def nexus_download_mod_file(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
     file_id: int = Field(..., description="Numeric file ID.", ge=1),
-    destination: Optional[str] = Field(
+    destination: str | None = Field(
         default=None,
         description="Directory to save the file into (created if missing). Defaults to the current working directory.",
     ),
-    key: Optional[str] = Field(
+    key: str | None = Field(
         default=None,
         description="'key' from a .nxm download link. REQUIRED for non-premium accounts (403 otherwise).",
     ),
-    expires: Optional[int] = Field(
+    expires: int | None = Field(
         default=None,
         description="'expires' (unix epoch seconds) from a .nxm download link. REQUIRED for non-premium accounts.",
     ),
@@ -417,7 +415,7 @@ async def nexus_download_mod_file(
     filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", filename).strip(" .")
     if not filename:
         filename = f"{domain_name}_mod{mod_id}_file{file_id}.bin"
-    dest_dir = Path(destination).expanduser() if destination else Path.cwd()
+    dest_dir = Path(destination).expanduser() if destination else Path.cwd()  # noqa: ASYNC240 - one-shot local mkdir; anyio.path is not worth it
     try:
         dest_dir.mkdir(parents=True, exist_ok=True)
         out_path = dest_dir / filename
@@ -429,15 +427,17 @@ async def nexus_download_mod_file(
     total = 0
     exceeded = False
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=120.0), follow_redirects=True) as hc:
-            async with hc.stream("GET", uri) as resp:
-                if resp.status_code >= 400:
-                    return (
-                        f"Error: CDN returned HTTP {resp.status_code} for the file download "
-                        "(expired link or premium required?). Re-run to mint a fresh link."
-                    )
-                with open(out_path, "wb") as fh:
-                    async for chunk in resp.aiter_bytes(65536):
+        async with (
+            httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=120.0), follow_redirects=True) as hc,
+            hc.stream("GET", uri) as resp,
+        ):
+            if resp.status_code >= 400:
+                return (
+                    f"Error: CDN returned HTTP {resp.status_code} for the file download "
+                    "(expired link or premium required?). Re-run to mint a fresh link."
+                )
+            with open(out_path, "wb") as fh:  # noqa: ASYNC230 - small buffered writes; aiofiles is not worth a dep
+                async for chunk in resp.aiter_bytes(65536):
                         total += len(chunk)
                         if total > max_bytes:
                             exceeded = True
@@ -452,10 +452,8 @@ async def nexus_download_mod_file(
     except OSError as exc:
         return f"Error: could not write '{out_path}': {exc}"
     if exceeded:
-        try:
+        with contextlib.suppress(OSError):
             out_path.unlink()
-        except OSError:
-            pass
         return f"Error: file exceeded max_bytes={max_bytes}; aborted and deleted the partial file."
 
     return json.dumps(

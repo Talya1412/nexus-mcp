@@ -1,0 +1,52 @@
+name: Release
+
+# Publishes to PyPI when a vX.Y.Z tag is pushed.
+# Enable by adding a PYPI_API_TOKEN secret (PyPI -> Account Settings -> API tokens,
+# scope it to the nexus-mods-mcp project). Without the secret the job builds and
+# checks the artifacts but skips the upload.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist + wheel
+        run: |
+          pip install build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Wheel smoke test
+        run: |
+          pip install dist/*.whl
+          python -c "
+          import asyncio, nexus_mcp
+          tools = asyncio.run(nexus_mcp.mcp.list_tools())
+          assert len(tools) == 135, f'expected 135 tools, got {len(tools)}'
+          print(f'release artifact OK: {len(tools)} tools, v{nexus_mcp.__version__}')
+          "
+
+      - name: Gate on PYPI_API_TOKEN secret
+        id: gate
+        env:
+          TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: echo "upload=$([ -n "$TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to PyPI
+        if: steps.gate.outputs.upload == 'true'
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: python -m twine upload --non-interactive dist/*

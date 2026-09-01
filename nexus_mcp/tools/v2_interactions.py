@@ -2,14 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from pydantic.fields import FieldInfo
 from pydantic import Field
-
-from .._core import (
-    _gql_call,
-)
 
 from .._annotations import (
     _DESTRUCTIVE_ANNOTATIONS,
@@ -17,8 +10,11 @@ from .._annotations import (
     _IDEMPOTENT_MUTATION_ANNOTATIONS,
     _MUTATING_ANNOTATIONS,
 )
-
+from .._core import (
+    _gql_call,
+)
 from .._server import mcp
+
 
 @mcp.tool(name="nexus_track_user", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Track a user (v2)"})
 async def nexus_track_user(
@@ -160,7 +156,7 @@ async def nexus_remove_comment_like(
 async def nexus_create_comment(
     thread_id: int = Field(..., description="Comment thread ID to reply in.", ge=1),
     body: str = Field(..., description="Comment body text (plain text).", min_length=1),
-    reply_to_id: Optional[int] = Field(None, description="Comment ID to reply to; omit for a top-level comment.", ge=1),
+    reply_to_id: int | None = Field(None, description="Comment ID to reply to; omit for a top-level comment.", ge=1),
 ) -> str:
     """Post a comment in a thread via v2 GraphQL — top-level by default,
     or a nested reply when reply_to_id is given.

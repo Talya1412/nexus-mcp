@@ -5,8 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  ci:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,22 +19,109 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Syntax check
-        run: python -m compileall nexus_mcp
-
-      - name: Import + tool registry check
+      - name: Ruff
         run: |
+          pip install ruff
+          ruff check nexus_mcp tests
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package (editable, with dev tools)
+        run: pip install -e .[dev]
+
+      - name: Run test suite
+        run: pytest
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependency vulnerability scan (pip-audit)
+        run: |
+          pip install -e . pip-audit
+          pip-audit
+
+  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist + wheel
+        run: |
+          pip install build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Wheel smoke test (clean install from wheel)
+        run: |
+          pip install dist/*.whl
           python -c "
           import asyncio, nexus_mcp
-
           tools = asyncio.run(nexus_mcp.mcp.list_tools())
-          names = [t.name for t in tools]
-          dups = sorted({n for n in names if names.count(n) > 1})
-          assert not dups, f'duplicate tool names: {dups}'
-          assert all(t.description for t in tools), 'tool with empty description found'
           assert len(tools) == 135, f'expected 135 tools, got {len(tools)}'
-          print(f'OK: {len(tools)} tools, no duplicates, all described')
+          assert len({t.name for t in tools}) == len(tools), 'duplicate tool names'
+          assert all(t.description for t in tools), 'tool with empty description'
+          print(f'wheel OK: {len(tools)} tools, v{nexus_mcp.__version__}')
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+
+  live-smoke:
+    needs: [lint, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Gate on NEXUS_API_KEY secret
+        id: gate
+        env:
+          KEY: ${{ secrets.NEXUS_API_KEY }}
+        run: echo "run=$([ -n "$KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Live validate-key call (rate-limit exempt endpoint)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          NEXUS_API_KEY: ${{ secrets.NEXUS_API_KEY }}
+        run: |
+          python -c "
+          import asyncio, json
+          from nexus_mcp import _core
+          out = asyncio.run(_core._call('GET', '/v1/users/validate.json'))
+          data = json.loads(out)
+          assert 'user_id' in data, f'live smoke failed: {out[:300]}'
+          print(f'live smoke OK: user_id={data[\"user_id\"]}')
           "

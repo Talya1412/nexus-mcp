@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
-
 import json
 import secrets
 import time
 import urllib.parse
+from typing import Any
 
 from pydantic import Field
 
+from .._annotations import (
+    _IDEMPOTENT_MUTATION_ANNOTATIONS,
+    _MUTATING_ANNOTATIONS,
+    _READ_ONLY_ANNOTATIONS,
+)
 from .._core import (
-    NexusApiError,
     OAUTH_AUTHORIZE_URL,
+    NexusApiError,
+    _clear_cache,
     _clear_oauth_tokens,
     _gql_call,
     _load_oauth_tokens,
@@ -28,13 +33,6 @@ from .._core import (
     _save_oauth_tokens,
     _tokens_from_reply,
 )
-
-from .._annotations import (
-    _IDEMPOTENT_MUTATION_ANNOTATIONS,
-    _MUTATING_ANNOTATIONS,
-    _READ_ONLY_ANNOTATIONS,
-)
-
 from .._server import mcp
 from .v1_rest import nexus_validate_key
 
@@ -49,7 +47,7 @@ _OAUTH_REGISTER_NOTE = (
 @mcp.tool(name="nexus_oauth_login", annotations={**_MUTATING_ANNOTATIONS, "title": "Start Nexus OAuth login"})
 async def nexus_oauth_login(
     scope: str = Field(default="public", description="Space-separated OAuth scope. 'public' (or '') suffices for API access; 'public openid' adds identity."),
-    redirect_uri: Optional[str] = Field(default=None, description="Override the callback URI. Must match the one registered with Nexus; override with env NEXUS_OAUTH_REDIRECT_URI."),
+    redirect_uri: str | None = Field(default=None, description="Override the callback URI. Must match the one registered with Nexus; override with env NEXUS_OAUTH_REDIRECT_URI."),
 ) -> str:
     """Start the OAuth2 authorization-code flow: returns the URL to open in a browser.
 
@@ -96,7 +94,7 @@ async def nexus_oauth_login(
 @mcp.tool(name="nexus_oauth_exchange", annotations={**_MUTATING_ANNOTATIONS, "title": "Complete Nexus OAuth login"})
 async def nexus_oauth_exchange(
     code: str = Field(..., description="The 'code' query parameter from the OAuth redirect after nexus_oauth_login.", min_length=1),
-    state: Optional[str] = Field(default=None, description="Optional 'state' value from the redirect URL; verified against the pending login when provided."),
+    state: str | None = Field(default=None, description="Optional 'state' value from the redirect URL; verified against the pending login when provided."),
 ) -> str:
     """Complete the OAuth2 flow: exchange the authorization code for tokens.
 
@@ -134,6 +132,7 @@ async def nexus_oauth_exchange(
     except NexusApiError as exc:
         return f"Error: {exc}"
     _save_oauth_tokens(_tokens_from_reply(reply))
+    _clear_cache()  # cached responses made under the previous (or absent) identity must not leak across accounts
     _oauth_pending = None
     return await nexus_validate_key()
 
@@ -204,6 +203,7 @@ async def nexus_oauth_logout() -> str:
     """
     global _oauth_pending
     _clear_oauth_tokens()
+    _clear_cache()
     _oauth_pending = None
     return json.dumps({"logged_out": True})
 

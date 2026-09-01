@@ -4,7 +4,7 @@ from . import tools  # noqa: F401 - registers all tools on import
 from ._core import APP_VERSION as __version__
 from ._server import mcp
 
-__all__ = ["__version__", "mcp", "main"]
+__all__ = ["__version__", "main", "mcp"]
 
 
 def main() -> None:

@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import json
-import re
 
 from pydantic import Field
-
-from .._core import (
-    _gql_call,
-)
 
 from .._annotations import (
     _IDEMPOTENT_MUTATION_ANNOTATIONS,
     _READ_ONLY_ANNOTATIONS,
 )
-
+from .._core import (
+    _gql_call,
+)
 from .._server import mcp
 
 _MOD_FILES_BY_UID_QUERY = """
@@ -120,8 +115,8 @@ async def nexus_get_ignored_users() -> str:
 
 @mcp.tool(name="nexus_ignore_user", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Ignore a user (v2)"})
 async def nexus_ignore_user(
-    user_id: Optional[int] = Field(default=None, description="Nexus Mods member ID to ignore. Provide this or username.", ge=1),
-    username: Optional[str] = Field(default=None, description="Exact Nexus username to ignore. Provide this or user_id."),
+    user_id: int | None = Field(default=None, description="Nexus Mods member ID to ignore. Provide this or username.", ge=1),
+    username: str | None = Field(default=None, description="Exact Nexus username to ignore. Provide this or user_id."),
 ) -> str:
     """Ignore (mute) a user via v2 GraphQL - hides their content in your feed.
 
@@ -147,8 +142,8 @@ async def nexus_ignore_user(
 
 @mcp.tool(name="nexus_unignore_user", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unignore a user (v2)"})
 async def nexus_unignore_user(
-    user_id: Optional[int] = Field(default=None, description="Nexus Mods member ID to unignore. Provide this or username.", ge=1),
-    username: Optional[str] = Field(default=None, description="Exact Nexus username to unignore. Provide this or user_id."),
+    user_id: int | None = Field(default=None, description="Nexus Mods member ID to unignore. Provide this or username.", ge=1),
+    username: str | None = Field(default=None, description="Exact Nexus username to unignore. Provide this or user_id."),
 ) -> str:
     """Stop ignoring (unmute) a user via v2 GraphQL.
 

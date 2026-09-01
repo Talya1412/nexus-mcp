@@ -17,7 +17,9 @@ Docs: https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_param
 """
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
 import hashlib
 import json
 import os
@@ -25,17 +27,16 @@ import re
 import secrets
 import sys
 import time
-import urllib.parse
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any
 
 import httpx
-from pydantic import Field
+from pydantic.fields import FieldInfo
 
 API_BASE = "https://api.nexusmods.com"
 GRAPHQL_PATH = "/v2/graphql"
 APP_NAME = "nexus-mcp"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 __version__ = APP_VERSION
 
 RL_HEADERS = [
@@ -50,14 +51,23 @@ RL_HEADERS = [
 DOMAIN_DESC = "Nexus Mods game domain (lowercase URL slug), e.g. 'forzahorizon6', 'skyrimse'. NOT the display name."
 
 class NexusApiError(Exception):
-    """Raised for config, network, or API-level failures with actionable messages."""
+    """Raised for config, network, or API-level failures with actionable messages.
+
+    ``status`` carries the HTTP status code when the error came from an HTTP
+    response (None for network/config errors) so callers can distinguish
+    permanent auth failures from transient ones.
+    """
+
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 # ---------------------------------------------------------------------------
 # Shared client + helpers
 # ---------------------------------------------------------------------------
 
-_client: Optional[httpx.AsyncClient] = None
+_client: httpx.AsyncClient | None = None
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -85,7 +95,7 @@ OAUTH_AUTHORIZE_URL = "https://users.nexusmods.com/oauth/authorize"
 OAUTH_TOKEN_URL = "https://users.nexusmods.com/oauth/token"
 OAUTH_REFRESH_MARGIN = 60  # refresh this many seconds before expiry
 
-_oauth_pending: Optional[dict[str, str]] = None
+_oauth_pending: dict[str, str] | None = None
 
 
 def _oauth_client_id() -> str:
@@ -104,7 +114,7 @@ def _oauth_token_file() -> Path:
     return Path(os.environ.get("NEXUS_OAUTH_TOKEN_FILE", "")).expanduser() if os.environ.get("NEXUS_OAUTH_TOKEN_FILE") else Path.home() / ".nexus-mcp" / "oauth-tokens.json"
 
 
-def _load_oauth_tokens() -> Optional[dict[str, Any]]:
+def _load_oauth_tokens() -> dict[str, Any] | None:
     try:
         return json.loads(_oauth_token_file().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -112,16 +122,19 @@ def _load_oauth_tokens() -> Optional[dict[str, Any]]:
 
 
 def _save_oauth_tokens(tokens: dict[str, Any]) -> None:
+    """Persist tokens atomically with owner-only permissions (0600)."""
     path = _oauth_token_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
+    with contextlib.suppress(OSError):  # Windows: chmod is best-effort
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
 
 
 def _clear_oauth_tokens() -> None:
-    try:
+    with contextlib.suppress(OSError):
         _oauth_token_file().unlink()
-    except OSError:
-        pass
 
 
 def _pkce_pair() -> tuple[str, str]:
@@ -138,10 +151,13 @@ async def _oauth_token_request(form: dict[str, str]) -> dict[str, Any]:
     try:
         body = response.json()
     except json.JSONDecodeError:
-        raise NexusApiError(f"OAuth token endpoint returned HTTP {response.status_code} with a non-JSON body.")
+        raise NexusApiError(
+            f"OAuth token endpoint returned HTTP {response.status_code} with a non-JSON body.",
+            status=response.status_code,
+        ) from None
     if response.status_code != 200 or "error" in body:
         detail = body.get("error_description") or body.get("error") or f"HTTP {response.status_code}"
-        raise NexusApiError(f"OAuth token request failed: {detail}")
+        raise NexusApiError(f"OAuth token request failed: {detail}", status=response.status_code)
     return body
 
 
@@ -157,27 +173,41 @@ def _tokens_from_reply(reply: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _oauth_refresh(tokens: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """Refresh the access token. Returns new tokens, or None if revoked/invalid (tokens cleared)."""
-    refresh_token = tokens.get("refresh_token")
-    if not refresh_token:
-        return None
-    form = {
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": _oauth_client_id(),
-    }
-    if _oauth_client_secret():
-        form["client_secret"] = _oauth_client_secret()
-    try:
-        reply = await _oauth_token_request(form)
-    except NexusApiError:
-        # Per the official guide, a 4xx on refresh means the user revoked the app
-        _clear_oauth_tokens()
-        return None
-    new_tokens = _tokens_from_reply(reply)
-    _save_oauth_tokens(new_tokens)
-    return new_tokens
+_REFRESH_LOCK = asyncio.Lock()
+
+
+async def _oauth_refresh(tokens: dict[str, Any]) -> dict[str, Any] | None:
+    """Refresh the access token (single-flight). Returns new tokens, or None if revoked.
+
+    Only 4xx replies count as revocation (tokens cleared) - transient failures
+    (5xx, non-JSON, network) keep the tokens and surface the error, so a flaky
+    connection can never log the user out.
+    """
+    async with _REFRESH_LOCK:
+        fresh = _load_oauth_tokens()  # another request may have refreshed while we waited
+        if fresh is not None and fresh is not tokens and fresh.get("expires_at", 0) > time.time():
+            return fresh
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            return None
+        form = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": _oauth_client_id(),
+        }
+        if _oauth_client_secret():
+            form["client_secret"] = _oauth_client_secret()
+        try:
+            reply = await _oauth_token_request(form)
+        except NexusApiError as exc:
+            if exc.status is not None and 400 <= exc.status < 500:
+                # Per the official guide, a 4xx on refresh means the user revoked the app
+                _clear_oauth_tokens()
+                return None
+            raise  # transient failure - keep tokens
+        new_tokens = _tokens_from_reply(reply)
+        _save_oauth_tokens(new_tokens)
+        return new_tokens
 
 
 async def _auth_headers() -> dict[str, str]:
@@ -203,6 +233,24 @@ async def _auth_headers() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 _CACHE: dict[str, tuple[float, Any, dict[str, str]]] = {}
+_CACHE_MAX_ENTRIES = 512
+
+
+def _clear_cache() -> None:
+    """Drop all cached responses (called when the auth identity changes)."""
+    _CACHE.clear()
+
+
+def _prune_cache() -> None:
+    """Keep the cache bounded: drop expired entries, then oldest-first if still over cap."""
+    if len(_CACHE) < _CACHE_MAX_ENTRIES:
+        return
+    now = time.monotonic()
+    for key in [k for k, v in _CACHE.items() if v[0] <= now]:
+        _CACHE.pop(key, None)
+    if len(_CACHE) >= _CACHE_MAX_ENTRIES:
+        for key in sorted(_CACHE, key=lambda k: _CACHE[k][0])[: len(_CACHE) - _CACHE_MAX_ENTRIES + 1]:
+            _CACHE.pop(key, None)
 
 
 def _ttl_for(path: str) -> int:
@@ -218,7 +266,7 @@ def _ttl_for(path: str) -> int:
     return 0
 
 
-def _cache_key(method: str, path: str, params: Optional[dict[str, Any]], data: Optional[dict[str, Any]]) -> str:
+def _cache_key(method: str, path: str, params: dict[str, Any] | None, data: dict[str, Any] | None) -> str:
     return json.dumps([method, path, params or {}, data or {}], sort_keys=True)
 
 
@@ -254,8 +302,8 @@ async def _api(
     method: str,
     path: str,
     *,
-    params: Optional[dict[str, Any]] = None,
-    data: Optional[dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
+    data: dict[str, Any] | None = None,
     ttl: int = 0,
 ) -> tuple[Any, dict[str, str]]:
     """Perform an authenticated API request; returns (json payload, rate-limit headers)."""
@@ -269,6 +317,7 @@ async def _api(
     payload, rl = await _request(method, path, params, data)
 
     if ttl:
+        _prune_cache()
         _CACHE[key] = (time.monotonic() + ttl, payload, rl)
     return payload, rl
 
@@ -276,16 +325,16 @@ async def _api(
 async def _request(
     method: str,
     path: str,
-    params: Optional[dict[str, Any]],
-    data: Optional[dict[str, Any]],
+    params: dict[str, Any] | None,
+    data: dict[str, Any] | None,
 ) -> tuple[Any, dict[str, str]]:
     client = _get_client()
     try:
         response = await client.request(method, path, params=params, data=data, headers=await _auth_headers())
-    except httpx.TimeoutException:
-        raise NexusApiError("Request timed out after 30s. Try again.")
+    except httpx.TimeoutException as exc:
+        raise NexusApiError("Request timed out after 30s. Try again.") from exc
     except httpx.HTTPError as exc:
-        raise NexusApiError(f"Network error: {type(exc).__name__}: {exc}")
+        raise NexusApiError(f"Network error: {type(exc).__name__}: {exc}") from exc
 
     rl = _rl_snapshot(response)
 
@@ -316,7 +365,7 @@ async def _request(
     except json.JSONDecodeError:
         raise NexusApiError(
             "API returned a non-JSON (HTML) response - possibly a firewall/CDN error page. Retry."
-        )
+        ) from None
 
 
 def _dump(payload: Any, rl: dict[str, str]) -> str:
@@ -329,8 +378,8 @@ async def _call(
     method: str,
     path: str,
     *,
-    params: Optional[dict[str, Any]] = None,
-    data: Optional[dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
+    data: dict[str, Any] | None = None,
 ) -> str:
     try:
         payload, rl = await _api(method, path, params=params, data=data)
@@ -342,25 +391,28 @@ async def _call(
 GRAPHQL_TTL = 60  # GraphQL POSTs cached briefly - repeated identical queries within a session are cheap
 
 
-async def _graphql(query: str, variables: Optional[dict[str, Any]] = None) -> tuple[Any, dict[str, str]]:
+async def _graphql(query: str, variables: dict[str, Any] | None = None) -> tuple[Any, dict[str, str]]:
     """Execute a Nexus v2 GraphQL query (POST JSON); returns (data, rate-limit headers).
 
     v2 GraphQL has a rate-limit pool separate from v1 REST, so search/detail
     queries here do not consume the v1 quota.
+
+    Mutations are never cached - a repeated toggle must actually hit the server.
     """
     body = {"query": query, "variables": variables or {}}
-    key = _cache_key("POST", GRAPHQL_PATH, None, body)
-    hit = _CACHE.get(key)
+    is_mutation = query.lstrip().startswith("mutation")
+    key = None if is_mutation else _cache_key("POST", GRAPHQL_PATH, None, body)
+    hit = _CACHE.get(key) if key else None
     if hit is not None and hit[0] > time.monotonic():
         return hit[1], hit[2]
 
     client = _get_client()
     try:
         response = await client.post(GRAPHQL_PATH, json=body, headers=await _auth_headers())
-    except httpx.TimeoutException:
-        raise NexusApiError("Request timed out after 30s. Try again.")
+    except httpx.TimeoutException as exc:
+        raise NexusApiError("Request timed out after 30s. Try again.") from exc
     except httpx.HTTPError as exc:
-        raise NexusApiError(f"Network error: {type(exc).__name__}: {exc}")
+        raise NexusApiError(f"Network error: {type(exc).__name__}: {exc}") from exc
 
     rl = _rl_snapshot(response)
     if response.status_code >= 400:
@@ -368,7 +420,7 @@ async def _graphql(query: str, variables: Optional[dict[str, Any]] = None) -> tu
     try:
         result = response.json()
     except json.JSONDecodeError:
-        raise NexusApiError("GraphQL endpoint returned a non-JSON response - possibly a firewall/CDN error page. Retry.")
+        raise NexusApiError("GraphQL endpoint returned a non-JSON response - possibly a firewall/CDN error page. Retry.") from None
 
     errors = result.get("errors")
     if errors:
@@ -376,11 +428,13 @@ async def _graphql(query: str, variables: Optional[dict[str, Any]] = None) -> tu
         raise NexusApiError(f"GraphQL query failed: {msgs}")
 
     data = result.get("data")
-    _CACHE[key] = (time.monotonic() + GRAPHQL_TTL, data, rl)
+    if key:
+        _prune_cache()
+        _CACHE[key] = (time.monotonic() + GRAPHQL_TTL, data, rl)
     return data, rl
 
 
-async def _gql_call(query: str, variables: Optional[dict[str, Any]] = None) -> str:
+async def _gql_call(query: str, variables: dict[str, Any] | None = None) -> str:
     try:
         data, rl = await _graphql(query, variables)
         return _dump(data, rl)

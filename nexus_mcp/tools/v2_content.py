@@ -2,24 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
-
 import json
+from typing import Any, Literal
 
 from pydantic import Field
-
-from .._core import (
-    DOMAIN_DESC,
-    _GAME_ID_QUERY,
-    _MOD_SEARCH_FIELDS,
-    _gql_call,
-    _gql_page,
-)
 
 from .._annotations import (
     _READ_ONLY_ANNOTATIONS,
 )
-
+from .._core import (
+    _GAME_ID_QUERY,
+    _MOD_SEARCH_FIELDS,
+    DOMAIN_DESC,
+    _gql_call,
+    _gql_page,
+)
 from .._server import mcp
 
 _MOD_FILES_QUERY = """
@@ -84,7 +81,7 @@ query ModsByDomain($ids: [CompositeDomainWithIdInput!]!, $offset: Int, $count: I
     }
   }
 }
-""" % _MOD_SEARCH_FIELDS
+""" % _MOD_SEARCH_FIELDS  # noqa: UP031 - GraphQL braces conflict with str.format/f-strings; % is intentional
 
 
 @mcp.tool(
@@ -173,7 +170,7 @@ async def nexus_get_mod_endorsers(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
     first: int = Field(default=20, description="Page size (cursor pagination).", ge=1, le=100),
-    after_cursor: Optional[str] = Field(default=None, description="Cursor from a previous page's pageInfo.endCursor."),
+    after_cursor: str | None = Field(default=None, description="Cursor from a previous page's pageInfo.endCursor."),
 ) -> str:
     """List users who endorsed a mod via v2 GraphQL.
 
@@ -228,10 +225,10 @@ query News($cat: NewsCategoryEnum, $gameId: Int, $offset: Int, $count: Int) {
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get Nexus news (v2)"},
 )
 async def nexus_get_news(
-    category: Optional[Literal["SITE_NEWS", "GAME_NEWS", "MOD_NEWS", "INTERVIEWS", "COMPETITIONS", "FEATURES"]] = Field(
+    category: Literal["SITE_NEWS", "GAME_NEWS", "MOD_NEWS", "INTERVIEWS", "COMPETITIONS", "FEATURES"] | None = Field(
         default=None, description="Filter by news category. Optional."
     ),
-    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    domain_name: str | None = Field(default=None, description=DOMAIN_DESC),
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
@@ -244,7 +241,7 @@ async def nexus_get_news(
         JSON {totalCount, _returned, nodes: [{id, title, summary, author, date,
         newsCategory, sourceName, sourceUrl, commentsCount, image, games}]}.
     """
-    game_id: Optional[int] = None
+    game_id: int | None = None
     if domain_name:
         game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
         try:
@@ -286,7 +283,7 @@ query GlobalCategories {
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get mod categories (v2)"},
 )
 async def nexus_get_categories(
-    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    domain_name: str | None = Field(default=None, description=DOMAIN_DESC),
     is_global: bool = Field(default=False, description="If true, return global categories instead of game-specific ones."),
 ) -> str:
     """Get mod categories (per-game or global) via v2 GraphQL.
@@ -414,8 +411,8 @@ query CollectionRevisionDetail($slug: String!, $rev: Int, $adult: Boolean, $doma
 )
 async def nexus_get_collection_revision(
     slug: str = Field(..., description="Collection slug from nexus_search_collections."),
-    revision: Optional[int] = Field(default=None, description="Revision number. Omit for the latest revision.", ge=1),
-    domain_name: Optional[str] = Field(default=None, description=DOMAIN_DESC),
+    revision: int | None = Field(default=None, description="Revision number. Omit for the latest revision.", ge=1),
+    domain_name: str | None = Field(default=None, description=DOMAIN_DESC),
     view_adult_content: bool = Field(default=False, description="Set true to inspect adult collections."),
 ) -> str:
     """Get a specific collection revision (mod count, sizes, status) via v2 GraphQL.
@@ -452,8 +449,8 @@ query SearchComments($filter: CommentsSearchFilter, $sort: [CommentsSearchSort!]
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search comments (v2)"},
 )
 async def nexus_search_comments(
-    term: Optional[str] = Field(default=None, description="Free-text search over comment bodies."),
-    thread_id: Optional[int] = Field(default=None, description="Restrict results to a single comment thread.", ge=1),
+    term: str | None = Field(default=None, description="Free-text search over comment bodies."),
+    thread_id: int | None = Field(default=None, description="Restrict results to a single comment thread.", ge=1),
     count: int = Field(default=20, description="Results per page (cursor pagination).", ge=1, le=100),
 ) -> str:
     """Search Nexus Mods comments by text or list a thread's comments.

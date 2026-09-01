@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile server.py
+
+      - name: Import + tool registry check
+        run: |
+          python -c "
+          import asyncio, server
+
+          tools = asyncio.run(server.mcp.list_tools())
+          names = [t.name for t in tools]
+          dups = sorted({n for n in names if names.count(n) > 1})
+          assert not dups, f'duplicate tool names: {dups}'
+          assert all(t.description for t in tools), 'tool with empty description found'
+          print(f'OK: {len(tools)} tools, no duplicates, all described')
+          "

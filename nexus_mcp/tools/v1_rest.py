@@ -129,7 +129,7 @@ async def nexus_get_mod(
 ) -> str:
     """Get full details for one mod: name, author, version, description, endorsement and download counts, upload dates.
 
-    Returns: JSON mod info object (mod_id, name, summary, description BBCode, version, author, endorsement_count, mod_downloads, created/updated timestamps, ...). Server-cached 5 minutes.
+    Returns: JSON mod info object (mod_id, name, summary, description BBCode, version, author, endorsement_count, mod_downloads, created/updated timestamps, ...). Cached 5 min.
     """
     if err := _check_domain(domain_name):
         return err

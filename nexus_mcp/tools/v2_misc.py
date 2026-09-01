@@ -41,7 +41,7 @@ async def nexus_get_files_by_uid(
 ) -> str:
     """Get mod file lists by mod UID(s) via v2 GraphQL - no domain/modId pair needed.
 
-    Response lacks domainName/modId - resolve the owning game/mod separately (e.g. nexus_search_by_md5) before download tools.
+    Response lacks domainName/modId - resolve owner game/mod separately (e.g. nexus_search_by_md5) before downloads.
 
     Returns:
         JSON {totalFiles, _returned, files: [{fileId, name, version, category, sizeInBytes, totalDownloads, date, description}]}.
@@ -215,7 +215,7 @@ async def nexus_get_user_by_name(
 ) -> str:
     """Get a user profile by exact username via v2 GraphQL.
 
-    Unlike nexus_search_users (fuzzy); fails cleanly when nobody has it. Useful to convert a username to a memberId.
+    Unlike nexus_search_users (fuzzy); fails cleanly when absent. Useful to convert a username to a memberId.
 
     Returns:
         JSON user object {memberId, name, avatar, modCount, kudos, joined, ...} or {userByName: null} when the username does not exist.
@@ -237,9 +237,9 @@ async def nexus_get_user_monthly_report(
     year: int = Field(..., description="Report year, e.g. 2026.", ge=2007),
     month: int = Field(..., description="Report month (1-12).", ge=1, le=12),
 ) -> str:
-    """Get the download/upload numbers for ONE specific month via v2 GraphQL.
+    """Get download/upload numbers for ONE month via v2 GraphQL.
 
-    Companion to nexus_get_user_monthly_summary. Nexus hides this report for privacy-restricted accounts - API-side restriction, not a tool failure.
+    Companion to nexus_get_user_monthly_summary. Hidden for privacy-restricted accounts — API-side, not a tool failure.
 
     Returns:
         JSON {userMonthlyReport: {userId, reportType, entries: [{month, year, value, status, ratio, modId, gameId, authorId, ...}]}}.

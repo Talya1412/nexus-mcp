@@ -302,18 +302,18 @@ def _rl_snapshot(response: httpx.Response) -> dict[str, str]:
 
 def _status_hint(status: int) -> str:
     hints = {
-        400: "Bad request - for download_link.json, 'key'/'expires' must come from a .nxm link.",
-        401: "Invalid or missing credentials. Check NEXUS_API_KEY or refresh the OAuth login.",
+        400: "Bad request: 'key'/'expires' for download_link.json must come from a .nxm link.",
+        401: "Invalid/missing credentials. Check NEXUS_API_KEY or refresh OAuth.",
         403: (
-            "Not permitted. For download_link.json: non-premium users MUST pass 'key' and "
-            "'expires' query params taken from the .nxm download link (premium users can omit them)."
+            "Not permitted: pass 'key'/'expires' from a .nxm link for download_link.json,"
+            " unless premium (may omit them)."
         ),
         404: (
-            "Not found. Verify domain_name (lowercase game slug, e.g. 'forzahorizon6', not the "
-            "display name) and the mod_id/file_id."
+            "Not found. Check domain_name (lowercase slug, e.g. 'forzahorizon6')"
+            " and mod_id/file_id."
         ),
-        410: "Download link expired. Request a fresh .nxm link from the Nexus website.",
-        422: "Unprocessable request - check parameter formats.",
+        410: "Download link expired: request a fresh .nxm link from Nexus.",
+        422: "Unprocessable request: check parameter formats.",
     }
     return hints.get(status, "")
 
@@ -390,15 +390,15 @@ async def _request(
 
     if response.status_code == 202:
         raise NexusApiError(
-            "API returned 202 (accepted but not processed in time). Treat as a timeout: "
-            "the side effect may or may not have been applied - re-check the resource state."
+            "API returned 202 (accepted, not processed in time). Treat as timeout: "
+            "side effect may or may not have applied — re-check resource state."
         )
     if response.status_code == 429:
         wait = _retry_after_seconds(response)
         wait_note = f" Server asked to retry after {wait:g}s." if wait is not None else ""
         raise NexusApiError(
-            f"Rate limit exceeded (quota or >30 requests/second).{wait_note} Remaining quota: "
-            f"{json.dumps(rl) if rl else 'unknown'}. Wait for the reset window before retrying."
+            f"Rate limit exceeded (quota or >30 rps).{wait_note} Quota left: "
+            f"{json.dumps(rl) if rl else 'unknown'}. Retry after reset."
         )
     if response.status_code >= 400:
         detail = ""
@@ -416,7 +416,7 @@ async def _request(
         return response.json(), rl
     except json.JSONDecodeError:
         raise NexusApiError(
-            "API returned a non-JSON (HTML) response - possibly a firewall/CDN error page. Retry."
+            "API returned a non-JSON (HTML) response: likely a firewall/CDN error page. Retry."
         ) from None
 
 
@@ -472,7 +472,7 @@ async def _graphql(query: str, variables: dict[str, Any] | None = None) -> tuple
     try:
         result = response.json()
     except json.JSONDecodeError:
-        raise NexusApiError("GraphQL endpoint returned a non-JSON response - possibly a firewall/CDN error page. Retry.") from None
+        raise NexusApiError("GraphQL endpoint returned a non-JSON response: likely a firewall/CDN error page. Retry.") from None
 
     errors = result.get("errors")
     if errors:

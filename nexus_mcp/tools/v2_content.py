@@ -277,7 +277,7 @@ async def nexus_get_categories(
 ) -> str:
     """Get mod categories (per-game or global) via v2 GraphQL.
 
-    Provide exactly one of domain_name or is_global. These are collection-style categories (Total Overhaul, Themed, ...) - per-game lists may be sparse for newer games.
+    Provide exactly one of domain_name or is_global. Collection-style; per-game lists may be sparse for newer games.
 
     Returns:
         JSON list [{id, name, parentId, description, approved, ...}].
@@ -435,7 +435,7 @@ async def nexus_search_comments(
 ) -> str:
     """Search Nexus Mods comments by text or list a thread's comments.
 
-    Provide exactly one of term or thread_id. KNOWN ISSUE: searchComments currently returns HTTP 500 for all requests server-side; errors surfaced as-is. May require extra permissions for some threads.
+    Provide exactly one of term or thread_id. KNOWN ISSUE: searchComments 500s server-side; errors surfaced as-is; some threads may need extra permissions.
 
     Returns:
         JSON {totalCount, timeTaken, nodes: [{id, body, createdAt, likesCount, isPinned, creator}]}.

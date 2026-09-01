@@ -181,7 +181,7 @@ async def nexus_discard_comment(
 ) -> str:
     """Discard (soft-delete) a comment via v2 GraphQL.
 
-    Only the author (or a moderator) can discard. Restore (nexus_restore_comment) requires OAuth Bearer auth - under apikey-only auth discard is effectively one-way.
+    Only the author (or a moderator) can discard. Restore (nexus_restore_comment) needs OAuth Bearer; under apikey-only auth it is effectively one-way.
 
     Returns:
         JSON {discardComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.

@@ -289,7 +289,7 @@ async def nexus_search_media(
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
-    """Search site-wide media (images, supporter images, videos) via v2 GraphQL.
+    """Search site-wide media (images/videos) via v2 GraphQL.
 
     NOTE: server-side flaky - intermittently fails with GraphQL "A name ... was not found" errors regardless of filters; retries often succeed. adultContent filter removed upstream (errors for both True/False).
 
@@ -415,7 +415,7 @@ async def nexus_get_transactions(
 ) -> str:
     """Get Donation Points transactions for the current user (v2 GraphQL).
 
-    OAuth required (nexus_oauth_login + nexus_oauth_exchange); Nexus hides the data under apikey-only auth ("hidden due to permissions") - API-side restriction, not a tool failure.
+    OAuth required (nexus_oauth_login + nexus_oauth_exchange); apikey auth hides data ("hidden due to permissions") — API-side, not a tool failure.
 
     Returns:
         JSON {totalCount, filteredCount, transactions: [{id, type, label, amount, createdAt, creditorEntity, debitorEntity}]}.
@@ -483,7 +483,7 @@ async def nexus_get_user_monthly_report_by_id(
 ) -> str:
     """Get one monthly Donation Points report by report ID (v2 GraphQL).
 
-    NOTE: Hidden for privacy-restricted accounts ("hidden due to permissions") - API-side restriction, not a tool failure.
+    NOTE: hidden for privacy-restricted accounts ("hidden due to permissions") — API-side, not a tool failure.
 
     Returns:
         JSON {userId, entries: [{reportId, year, month, value, status, ratio, authorId, authorValue, gameId, modId, modCount, modValue, authorCount}]}.

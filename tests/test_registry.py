@@ -42,7 +42,7 @@ def test_annotations_structure():
         assert isinstance(ann.destructiveHint, bool), tool.name
         if ann.destructiveHint:
             assert not ann.readOnlyHint, f"{tool.name}: destructive but marked read-only"
-    assert annotated >= 61, f"expected >=61 annotated tools, got {annotated}"
+    assert annotated == EXPECTED_TOOLS, f"expected all {EXPECTED_TOOLS} tools annotated, got {annotated}"
 
 
 def test_known_mutation_is_not_readonly():

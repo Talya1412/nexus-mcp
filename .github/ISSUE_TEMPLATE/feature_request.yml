@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a new tool, API surface, or behavior
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do with the Nexus Mods API that the current 135 tools don't cover?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: If it maps to a specific Nexus endpoint, name it (v1 REST or v2 GraphQL) and link its docs.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -316,13 +316,22 @@ v1 REST and v2 GraphQL.
 ## Development
 
 ```bash
-pip install -r requirements.txt
-python -m compileall nexus_mcp           # syntax check
-python -m nexus_mcp                      # run on stdio
-python -c "import asyncio, nexus_mcp; print(len(asyncio.run(nexus_mcp.mcp.list_tools())))"  # tool count
+pip install -e ".[dev]"    # editable install with pytest + ruff
+python -m pytest           # 72-test suite, fully offline (mocked HTTP)
+python -m ruff check nexus_mcp tests
+python -m nexus_mcp        # run on stdio
 ```
 
-CI runs on every push: syntax compile, import check, and tool-count verification.
+CI runs on every push: ruff lint, pytest across ubuntu/windows (Python 3.10–3.12),
+pip-audit, build + twine check + wheel smoke test, and an optional live API smoke test.
+Tagged releases (`v*`) publish to PyPI automatically.
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the
+tool-authoring checklist, and conventions. Bug reports and feature requests use the
+issue templates; security issues go through
+[private vulnerability reporting](https://github.com/Talya1412/nexus-mcp/security/advisories/new).
 
 ## License
 

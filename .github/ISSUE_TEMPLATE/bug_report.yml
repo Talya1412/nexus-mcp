@@ -1,0 +1,46 @@
+name: Bug report
+description: Something broke or behaves incorrectly
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the exact tool call (tool name + arguments) and the full error output. Redact any API keys or tokens.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: nexus-mcp version
+      description: Output of `python -c "import nexus_mcp; print(nexus_mcp.__version__)"` (or `uvx --from nexus-mods-mcp nexus-mcp --version`-style install info if running via uvx).
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP client / harness
+      options:
+        - Claude Desktop
+        - opencode
+        - Cursor
+        - Other (describe below)
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Auth mode (API key / OAuth), whether a proxy/VPN is involved, anything else useful.

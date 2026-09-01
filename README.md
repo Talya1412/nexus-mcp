@@ -5,7 +5,7 @@
 [![CI](https://github.com/Talya1412/nexus-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Talya1412/nexus-mcp/actions/workflows/ci.yml)
 [![MCP](https://img.shields.io/badge/protocol-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
 
-**134 MCP tools** for [Nexus Mods](https://www.nexusmods.com) — wraps the official
+**135 MCP tools** for [Nexus Mods](https://www.nexusmods.com) — wraps the official
 **REST API v1** and **GraphQL API v2** as a Model Context Protocol server (Python +
 FastMCP, stdio transport). Lets any MCP client (Claude Desktop, opencode, Cursor, ...)
 browse games, inspect mods and files, run free-text searches, download mod files with
@@ -13,7 +13,7 @@ checksum verification, manage endorsements, comments, collections, and user pref
 
 ## Highlights
 
-- **Full API coverage** — 67 read tools + 67 mutations across v1 REST and v2 GraphQL.
+- **Full API coverage** — 69 read tools + 66 mutations across v1 REST and v2 GraphQL.
   Includes things v1 doesn't offer: free-text mod search, batch mod lookups, comment
   threads, collection lifecycle, and quota-free GraphQL reads.
 - **Built-in TTL cache** — repeated identical GETs within a session don't consume quota
@@ -46,23 +46,38 @@ pip install -r requirements.txt
 python server.py
 ```
 
-## Configuration
+## Works with every MCP harness
 
 Create an API key at <https://www.nexusmods.com/users/myaccount?tab=api%20access>,
-then register the server with your MCP client. Generic example:
+then pick your harness below. The server is a single stdio process — no ports,
+no daemons, no database.
+
+**Zero-install (recommended):** run straight from GitHub with `uvx` — nothing to
+clone, no venv to manage, auto-fetched on first run:
 
 ```json
 {
   "mcpServers": {
     "nexus": {
-      "command": "nexus-mcp",
-      "environment": {
-        "NEXUS_API_KEY": "<your-key>"
-      }
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "env": { "NEXUS_API_KEY": "<your-key>" }
     }
   }
 }
 ```
+
+If you installed locally (`pipx install git+https://github.com/Talya1412/nexus-mcp`),
+use `"command": "nexus-mcp"` without the `uvx` wrapper instead.
+
+<details>
+<summary>Claude Code (one-liner)</summary>
+
+```bash
+claude mcp add nexus -e NEXUS_API_KEY=<your-key> -- uvx --from git+https://github.com/Talya1412/nexus-mcp nexus-mcp
+```
+
+</details>
 
 <details>
 <summary>opencode (<code>opencode.json</code>)</summary>
@@ -73,7 +88,7 @@ then register the server with your MCP client. Generic example:
   "mcp": {
     "nexus": {
       "type": "local",
-      "command": ["nexus-mcp"],
+      "command": ["uvx", "--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
       "enabled": true,
       "environment": {
         "NEXUS_API_KEY": "<your-key>"
@@ -92,13 +107,74 @@ then register the server with your MCP client. Generic example:
 {
   "mcpServers": {
     "nexus": {
-      "command": "nexus-mcp",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
       "env": {
         "NEXUS_API_KEY": "<your-key>"
       }
     }
   }
 }
+```
+
+</details>
+
+<details>
+<summary>Cursor / Windsurf / Cline (any <code>mcpServers</code> JSON)</summary>
+
+Same shape as the generic JSON above. Paste the `mcpServers` block into:
+Cursor — `.cursor/mcp.json` · Windsurf — `~/.codeium/windsurf/mcp_config.json` ·
+Cline — extension MCP server settings.
+
+</details>
+
+<details>
+<summary>VS Code (<code>.vscode/mcp.json</code>)</summary>
+
+```json
+{
+  "servers": {
+    "nexus": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "env": {
+        "NEXUS_API_KEY": "<your-key>"
+      }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>Gemini CLI (<code>~/.gemini/settings.json</code>)</summary>
+
+```json
+{
+  "mcpServers": {
+    "nexus": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "env": {
+        "NEXUS_API_KEY": "<your-key>"
+      }
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>Codex CLI (<code>~/.codex/config.toml</code>)</summary>
+
+```toml
+[mcp_servers.nexus]
+command = "uvx"
+args = ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"]
+env = { "NEXUS_API_KEY" = "<your-key>" }
 ```
 
 </details>
@@ -171,6 +247,7 @@ v1 REST and v2 GraphQL.
 | `nexus_get_mods_batch` | Resolve many mods in one query: `"domain:modId,domain:modId"` |
 | `nexus_get_mod_endorsers` | Users who endorsed a mod (cursor pagination) |
 | `nexus_search_games` / `nexus_get_game_v2` | Game search / rich game details (genre, forum, counts, Vortex support) |
+| `nexus_resolve_domain` | Resolve a game display name (e.g. 'Skyrim Special Edition') to its `domain_name` slug — call before any tool needing `domain_name` |
 | `nexus_get_files_v2` / `nexus_get_files_by_uid` | File lists via v2 (by domain/modId or by uid) |
 | `nexus_search_users` / `nexus_get_user_v2` / `nexus_get_user_by_name` | User search (fuzzy) / public profile by id or username / exact username lookup |
 | `nexus_search_collections` / `nexus_get_collection` / `nexus_get_collection_revision` | Collection search / details by slug / single revision |

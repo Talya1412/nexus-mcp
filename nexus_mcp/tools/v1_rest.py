@@ -20,6 +20,7 @@ from .._core import (
     _api,
     _call,
     _dump,
+    _validate_domain,
 )
 from .._server import mcp
 
@@ -73,6 +74,7 @@ async def nexus_get_games(
         JSON array of games: {id, domain_name, name, genre, mods, file_count,
         downloads, approved_date, collections}. With '_rl' rate-limit snapshot.
     """
+    domain_name = _validate_domain(domain_name)
     query = {"include_unapproved": str(include_unapproved).lower()}
     try:
         payload, rl = await _api("GET", "/v1/games.json", params=query)
@@ -108,6 +110,7 @@ async def nexus_get_game(
         JSON object with game info including a 'categories' list (category_id,
         name, parent_category).
     """
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}.json")
 
 
@@ -136,6 +139,7 @@ async def nexus_get_mod(
         author, endorsement_count, mod_downloads, created/updated timestamps, ...).
         Server-cached 5 minutes.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/{mod_id}.json")
 
 
@@ -159,6 +163,7 @@ async def nexus_get_mod_changelogs(
         JSON dict mapping version -> list of HTML changelog strings,
         e.g. {"1.1": ["<p>Fixed X</p>"], "1.2": ["<p>Added Y</p>"]}.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/{mod_id}/changelogs.json")
 
 
@@ -176,6 +181,7 @@ async def nexus_get_latest_added(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
     """Get the 10 most recently added mods for a game (array of mod info objects)."""
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/latest_added.json")
 
 
@@ -193,6 +199,7 @@ async def nexus_get_latest_updated(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
     """Get the 10 most recently updated mods for a game (array of mod info objects)."""
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/latest_updated.json")
 
 
@@ -210,6 +217,7 @@ async def nexus_get_trending(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
     """Get the 10 currently trending mods for a game (array of mod info objects)."""
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/trending.json")
 
 
@@ -233,6 +241,7 @@ async def nexus_get_updated_mods(
         JSON array of {mod_id, latest_file_update (epoch), latest_mod_activity (epoch)}.
         Server-cached 5 minutes. Useful to check if your own mod page saw activity.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/updated.json", params={"period": period})
 
 
@@ -268,6 +277,7 @@ async def nexus_get_mod_files(
         File category_id mapping: 1=MAIN, 2=UPDATE, 3=OPTIONAL, 4=OLD_VERSION,
         6=DELETED, 7=ARCHIVED.
     """
+    domain_name = _validate_domain(domain_name)
     query = {"category": category} if category else None
     return await _call("GET", f"/v1/games/{domain_name}/mods/{mod_id}/files.json", params=query)
 
@@ -288,6 +298,7 @@ async def nexus_get_file_info(
     file_id: int = Field(..., description="Numeric file ID, e.g. 2291.", ge=1),
 ) -> str:
     """Get details for a single file of a mod: version, size, MD5, virus scan link, changelog."""
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/{mod_id}/files/{file_id}.json")
 
 
@@ -324,6 +335,7 @@ async def nexus_get_download_link(
         JSON array of {URI, name, short_name} mirrors - the first entry is the
         preferred location. Links are short-lived; do not cache them.
     """
+    domain_name = _validate_domain(domain_name)
     query: dict[str, Any] = {}
     if key is not None:
         query["key"] = key
@@ -378,6 +390,7 @@ async def nexus_download_mod_file(
     Returns:
         JSON {file, bytes, md5, sha256, mirror, _rl} or an error string.
     """
+    domain_name = _validate_domain(domain_name)
     # Direct-call artifact: unpassed Optional Field params arrive as FieldInfo
     if not isinstance(destination, str):
         destination = None
@@ -489,6 +502,7 @@ async def nexus_search_by_md5(
     Returns:
         JSON array of {mod: <mod info>, file_details: <file info>}.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call("GET", f"/v1/games/{domain_name}/mods/md5_search/{md5_hash}.json")
 
 
@@ -534,6 +548,7 @@ async def nexus_track_mod(
     Returns:
         JSON {message: "..."}; HTTP 200 = already tracking, 201 = newly tracked.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call(
         "POST",
         "/v1/user/tracked_mods.json",
@@ -561,6 +576,7 @@ async def nexus_untrack_mod(
     Returns:
         JSON {message: "..."}.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call(
         "DELETE",
         "/v1/user/tracked_mods.json",
@@ -616,6 +632,7 @@ async def nexus_endorse_mod(
     Returns:
         JSON {message: "Updated to: Endorsed", status: "Endorsed"}.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call(
         "POST",
         f"/v1/games/{domain_name}/mods/{mod_id}/endorse.json",
@@ -643,6 +660,7 @@ async def nexus_abstain_endorsement(
     Returns:
         JSON {message: ..., status: "Abstained"}.
     """
+    domain_name = _validate_domain(domain_name)
     return await _call(
         "POST",
         f"/v1/games/{domain_name}/mods/{mod_id}/abstain.json",

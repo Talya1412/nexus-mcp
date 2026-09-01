@@ -50,6 +50,36 @@ RL_HEADERS = [
 
 DOMAIN_DESC = "Nexus Mods game domain (lowercase URL slug), e.g. 'forzahorizon6', 'skyrimse'. NOT the display name."
 
+_DOMAIN_RE = re.compile(r"[a-z0-9-]+")
+
+
+def _validate_domain(domain: str) -> str:
+    """Validate and normalise a Nexus Mods game domain slug.
+
+    Strips surrounding whitespace and lower-cases the value, then rejects
+    anything that still contains spaces, slashes, or other characters that
+    cannot appear in a real slug.  Raises :exc:`NexusApiError` with an
+    actionable message so callers see a clear fix instead of a generic 404.
+
+    Returns the normalised slug so callers can write::
+
+        domain_name = _validate_domain(domain_name)
+    """
+    domain = domain.strip().lower()
+    if not domain:
+        raise NexusApiError(
+            "domain_name must not be empty. "
+            "Use the lowercase URL slug (e.g. 'forzahorizon6', 'skyrimse')."
+        )
+    if not _DOMAIN_RE.fullmatch(domain):
+        raise NexusApiError(
+            f"Invalid domain_name: {domain!r}. "
+            "Use the lowercase URL slug (e.g. 'forzahorizon6', 'skyrimse'), "
+            "not the display name. Slugs contain only letters, digits, and hyphens."
+        )
+    return domain
+
+
 class NexusApiError(Exception):
     """Raised for config, network, or API-level failures with actionable messages.
 

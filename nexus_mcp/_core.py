@@ -36,8 +36,10 @@ from pydantic.fields import FieldInfo
 API_BASE = "https://api.nexusmods.com"
 GRAPHQL_PATH = "/v2/graphql"
 APP_NAME = "nexus-mcp"
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 __version__ = APP_VERSION
+
+EXPECTED_TOOLS = 140  # single source of truth: registry tests + CI wheel smoke
 
 RL_HEADERS = [
     "X-RL-Hourly-Limit",

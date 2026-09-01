@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexus-mods-mcp"
-version = "1.4.0"
+dynamic = ["version"]
 description = "Nexus Mods MCP server - 140 tools over REST API v1 + GraphQL API v2"
 readme = "README.md"
 license = { text = "MIT" }
@@ -36,6 +36,9 @@ nexus-mcp = "nexus_mcp.server:main"
 
 [tool.setuptools]
 packages = ["nexus_mcp", "nexus_mcp.tools"]
+
+[tool.setuptools.dynamic]
+version = { attr = "nexus_mcp._core.APP_VERSION" }
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]

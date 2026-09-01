@@ -4,7 +4,13 @@ All notable changes to `nexus-mods-mcp` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - to be released as 1.4.0
+## [Unreleased]
+
+### Changed
+- Version is single-sourced: `pyproject.toml` derives it from `nexus_mcp._core.APP_VERSION` instead of a static `version` field.
+- The 140-tool count is single-sourced as `nexus_mcp.EXPECTED_TOOLS` and shared by the registry tests (`tests/test_registry.py`, `tests/test_profiles.py`) and the CI/release wheel smoke checks instead of being hardcoded in each place. (#22)
+
+## [1.4.0] - 2026-09-02
 
 ### Added
 - `NEXUS_MCP_TOOLS` tool profiles: `all` (default, 140 tools), `read` (74 read-only tools), `rw` (all but the 12 destructive tools). Invalid values fail loudly at startup. (#20)

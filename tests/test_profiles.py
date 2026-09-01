@@ -10,6 +10,7 @@ from nexus_mcp._annotations import (
     _MUTATING_ANNOTATIONS,
     _READ_ONLY_ANNOTATIONS,
 )
+from nexus_mcp._core import EXPECTED_TOOLS
 from nexus_mcp._profiles import _PROFILE_VALUES, _apply_profile, _tool_destructive, _tool_read_only
 
 
@@ -117,7 +118,7 @@ def test_real_server_annotation_counts() -> None:
     tools = mcp._tool_manager.list_tools()
     read_only = [t for t in tools if _tool_read_only(t)]
     destructive = [t for t in tools if _tool_destructive(t)]
-    assert len(tools) == 140
+    assert len(tools) == EXPECTED_TOOLS
     assert len(read_only) == 74
     assert len(destructive) == 12
     assert len(tools) - len(destructive) == 128

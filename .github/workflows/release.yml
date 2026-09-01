@@ -34,7 +34,7 @@ jobs:
           python -c "
           import asyncio, nexus_mcp
           tools = asyncio.run(nexus_mcp.mcp.list_tools())
-          assert len(tools) == 140, f'expected 140 tools, got {len(tools)}'
+          assert len(tools) == nexus_mcp.EXPECTED_TOOLS, f'expected {nexus_mcp.EXPECTED_TOOLS} tools, got {len(tools)}'
           print(f'release artifact OK: {len(tools)} tools, v{nexus_mcp.__version__}')
           "
 

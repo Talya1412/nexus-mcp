@@ -2,7 +2,7 @@
 """Nexus Mods MCP server.
 
 Wraps the official Nexus Mods REST API v1 (https://api.nexusmods.com) and
-GraphQL API v2 (https://api.nexusmods.com/v2/graphql) as 134 MCP tools:
+GraphQL API v2 (https://api.nexusmods.com/v2/graphql) as 135 MCP tools:
 validate key, browse games, inspect mods/files, free-text search, get download
 links, download files (MD5+SHA256 verified), search by MD5, comment threads,
 collections lifecycle, endorsements, and user preference/mutation tools.
@@ -37,7 +37,7 @@ from mcp.server.fastmcp import FastMCP
 API_BASE = "https://api.nexusmods.com"
 GRAPHQL_PATH = "/v2/graphql"
 APP_NAME = "nexus-mcp"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 __version__ = APP_VERSION
 
 RL_HEADERS = [
@@ -51,7 +51,24 @@ RL_HEADERS = [
 
 DOMAIN_DESC = "Nexus Mods game domain (lowercase URL slug), e.g. 'forzahorizon6', 'skyrimse'. NOT the display name."
 
-mcp = FastMCP("nexus_mcp")
+mcp = FastMCP(
+    "nexus_mcp",
+    instructions=(
+        "Nexus Mods API tools (v1 REST + v2 GraphQL).\n"
+        "- Most tools take `domain_name`: the lowercase game slug (e.g. 'skyrimspecialedition'), "
+        "NOT the display name. Resolve unknown game names with nexus_resolve_domain.\n"
+        "- Quota strategy: v1 REST allows 2000 req/hour and 20000/day; every v1 response carries an "
+        "`_rl` snapshot of the remaining quota. v2 GraphQL tools run on a separate pool and do NOT "
+        "consume v1 quota - prefer v2 tools (nexus_search_mods, nexus_get_mod_v2, nexus_get_mods_batch) "
+        "for searches and public data. Repeated identical reads are served from a built-in TTL cache "
+        "and cost nothing.\n"
+        "- Auth: NEXUS_API_KEY covers all public reads and most mutations. Some user-context mutations "
+        "require OAuth (nexus_oauth_login then nexus_oauth_exchange) - e.g. nexus_update_mod_direct_download, "
+        "nexus_restore_comment, nexus_get_transactions. Tool descriptions flag this where it applies.\n"
+        "- Tools carry readOnly/destructive/idempotent annotations; treat destructive tools as "
+        "user-confirm-worthy."
+    ),
+)
 
 
 class NexusApiError(Exception):
@@ -1530,6 +1547,41 @@ async def nexus_search_games(
             "sort": [{sort: {"direction": direction}}],
             "offset": offset,
             "count": count,
+        },
+    )
+    return _gql_page(data, "games")
+
+
+@mcp.tool(
+    name="nexus_resolve_domain",
+    annotations={**_READ_ONLY_ANNOTATIONS, "title": "Resolve a game name to its domain slug (v2)"},
+)
+async def nexus_resolve_domain(
+    game_name: str = Field(
+        ...,
+        description="Game display name or partial name, e.g. 'Skyrim Special Edition', 'fallout 4', 'witcher'.",
+    ),
+) -> str:
+    """Resolve a game display name to its `domain_name` slug (v2 GraphQL).
+
+    Convenience wrapper for agents: most tools require a lowercase
+    `domain_name` slug (e.g. 'skyrimspecialedition'), NOT the display name.
+    Call this first when you only know the game's name, then pass the returned
+    `domainName` value to the other tools.
+
+    Backed by the v2 GraphQL API (does not consume the v1 REST quota).
+
+    Returns:
+        JSON {totalCount, _returned, nodes: [{domainName, name, id}]} -
+        best matches first; take `domainName` from the intended node.
+    """
+    data = await _gql_call(
+        _GAMES_SEARCH_QUERY,
+        {
+            "filter": {"name": [{"value": game_name, "op": "WILDCARD"}]},
+            "sort": [{"downloads": {"direction": "DESC"}}],
+            "offset": 0,
+            "count": 10,
         },
     )
     return _gql_page(data, "games")

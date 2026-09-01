@@ -30,13 +30,13 @@ checksum verification, manage endorsements, comments, collections, and user pref
 
 ```bash
 # uv (recommended for MCP servers)
-uvx --from git+https://github.com/Talya1412/nexus-mcp nexus-mcp
+uvx --from nexus-mods-mcp nexus-mcp
 
 # pipx
-pipx install git+https://github.com/Talya1412/nexus-mcp
+pipx install nexus-mods-mcp
 
 # pip
-pip install git+https://github.com/Talya1412/nexus-mcp
+pip install nexus-mods-mcp
 ```
 
 Or from a cloned repository:
@@ -52,29 +52,29 @@ Create an API key at <https://www.nexusmods.com/users/myaccount?tab=api%20access
 then pick your harness below. The server is a single stdio process — no ports,
 no daemons, no database.
 
-**Zero-install (recommended):** run straight from GitHub with `uvx` — nothing to
-clone, no venv to manage, auto-fetched on first run:
+**Zero-install (recommended):** run from PyPI with `uvx` — nothing to clone,
+no venv to manage, auto-fetched on first run:
 
 ```json
 {
   "mcpServers": {
     "nexus": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "args": ["--from", "nexus-mods-mcp", "nexus-mcp"],
       "env": { "NEXUS_API_KEY": "<your-key>" }
     }
   }
 }
 ```
 
-If you installed locally (`pipx install git+https://github.com/Talya1412/nexus-mcp`),
+If you installed locally (`pipx install nexus-mods-mcp`),
 use `"command": "nexus-mcp"` without the `uvx` wrapper instead.
 
 <details>
 <summary>Claude Code (one-liner)</summary>
 
 ```bash
-claude mcp add nexus -e NEXUS_API_KEY=<your-key> -- uvx --from git+https://github.com/Talya1412/nexus-mcp nexus-mcp
+claude mcp add nexus -e NEXUS_API_KEY=<your-key> -- uvx --from nexus-mods-mcp nexus-mcp
 ```
 
 </details>
@@ -88,7 +88,7 @@ claude mcp add nexus -e NEXUS_API_KEY=<your-key> -- uvx --from git+https://githu
   "mcp": {
     "nexus": {
       "type": "local",
-      "command": ["uvx", "--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "command": ["uvx", "--from", "nexus-mods-mcp", "nexus-mcp"],
       "enabled": true,
       "environment": {
         "NEXUS_API_KEY": "<your-key>"
@@ -108,7 +108,7 @@ claude mcp add nexus -e NEXUS_API_KEY=<your-key> -- uvx --from git+https://githu
   "mcpServers": {
     "nexus": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "args": ["--from", "nexus-mods-mcp", "nexus-mcp"],
       "env": {
         "NEXUS_API_KEY": "<your-key>"
       }
@@ -137,7 +137,7 @@ Cline — extension MCP server settings.
     "nexus": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "args": ["--from", "nexus-mods-mcp", "nexus-mcp"],
       "env": {
         "NEXUS_API_KEY": "<your-key>"
       }
@@ -156,7 +156,7 @@ Cline — extension MCP server settings.
   "mcpServers": {
     "nexus": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"],
+      "args": ["--from", "nexus-mods-mcp", "nexus-mcp"],
       "env": {
         "NEXUS_API_KEY": "<your-key>"
       }
@@ -173,7 +173,7 @@ Cline — extension MCP server settings.
 ```toml
 [mcp_servers.nexus]
 command = "uvx"
-args = ["--from", "git+https://github.com/Talya1412/nexus-mcp", "nexus-mcp"]
+args = ["--from", "nexus-mods-mcp", "nexus-mcp"]
 env = { "NEXUS_API_KEY" = "<your-key>" }
 ```
 

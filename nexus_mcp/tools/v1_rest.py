@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import re
 import urllib.parse
@@ -23,6 +24,8 @@ from .._core import (
     _dump,
 )
 from .._server import mcp
+
+_LOG = logging.getLogger(__name__)
 
 
 @mcp.tool(
@@ -397,7 +400,7 @@ async def nexus_download_mod_file(
     key/expires pair from a .nxm download link generated on the Nexus website.
 
     Returns:
-        JSON {file, bytes, md5, sha256, mirror, _rl} or an error string.
+        JSON {file, bytes, md5, sha256, overwrote, mirror, _rl} or an error string.
     """
     # Direct-call artifact: unpassed Optional Field params arrive as FieldInfo
     if not isinstance(destination, str):
@@ -445,6 +448,10 @@ async def nexus_download_mod_file(
     except OSError as exc:
         return f"Error: cannot use destination '{destination}': {exc}"
 
+    existed = out_path.exists()
+    if existed:
+        _LOG.warning("Overwriting existing file: %s", out_path)
+
     md5 = hashlib.md5()
     sha256 = hashlib.sha256()
     total = 0
@@ -485,6 +492,7 @@ async def nexus_download_mod_file(
             "bytes": total,
             "md5": md5.hexdigest(),
             "sha256": sha256.hexdigest(),
+            "overwrote": existed,
             "mirror": first.get("short_name") or raw_name,
             "_rl": rl,
         },

@@ -1032,6 +1032,38 @@ _READ_ONLY_ANNOTATIONS = {
     "openWorldHint": True,
 }
 
+# One-shot writes: create/send/upload/flow-start/telemetry/raw escape hatch.
+_MUTATING_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": True,
+}
+
+# Toggles and state setters: repeating the call converges to the same state.
+_IDEMPOTENT_MUTATION_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": True,
+}
+
+# Content removal / hard-to-undo publishing decisions.
+_DESTRUCTIVE_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": True,
+    "idempotentHint": False,
+    "openWorldHint": True,
+}
+
+# Removals that converge (untrack, close report): destructive yet repeatable.
+_DESTRUCTIVE_IDEMPOTENT_ANNOTATIONS = {
+    "readOnlyHint": False,
+    "destructiveHint": True,
+    "idempotentHint": True,
+    "openWorldHint": True,
+}
+
 _SORT_KEY_MAP = {
     "relevance": "relevance",
     "name": "name",
@@ -1362,7 +1394,7 @@ async def nexus_graphql_introspect(
 
 @mcp.tool(
     name="nexus_graphql_query",
-    annotations={"title": "Run raw v2 GraphQL query"},
+    annotations={**_MUTATING_ANNOTATIONS, "title": "Run raw v2 GraphQL query"},
 )
 async def nexus_graphql_query(
     query: str = Field(..., description="GraphQL query document, e.g. 'query { games(count: 5) { nodes { name domainName } } }'."),
@@ -2025,6 +2057,11 @@ async def nexus_get_comment_thread(
     nexus_search_comments is unavailable (that endpoint is currently
     broken upstream).
 
+    NOTE: only thread IDs returned by the GraphQL API itself resolve
+    (e.g. from nexus_search_mods-related queries or createComment).
+    Thread IDs scraped from mod-page posts-tab HTML do NOT resolve
+    ("not found").
+
     Returns:
         JSON {id, comments: {totalCount, nodes: [{id, body, createdAt,
         likesCount, isPinned, creator, replies: {totalCount, nodes}}]}}.
@@ -2113,7 +2150,7 @@ async def nexus_get_user_monthly_summary(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(name="nexus_track_user", annotations={"title": "Track a user (v2)"})
+@mcp.tool(name="nexus_track_user", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Track a user (v2)"})
 async def nexus_track_user(
     user_id: int = Field(..., description="Nexus Mods member ID to track for updates.", ge=1),
 ) -> str:
@@ -2130,7 +2167,7 @@ async def nexus_track_user(
     )
 
 
-@mcp.tool(name="nexus_untrack_user", annotations={"title": "Untrack a user (v2)"})
+@mcp.tool(name="nexus_untrack_user", annotations={**_DESTRUCTIVE_IDEMPOTENT_ANNOTATIONS, "title": "Untrack a user (v2)"})
 async def nexus_untrack_user(
     user_id: int = Field(..., description="Nexus Mods member ID to stop tracking.", ge=1),
 ) -> str:
@@ -2147,7 +2184,7 @@ async def nexus_untrack_user(
     )
 
 
-@mcp.tool(name="nexus_give_kudos", annotations={"title": "Give kudos to a user (v2)"})
+@mcp.tool(name="nexus_give_kudos", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Give kudos to a user (v2)"})
 async def nexus_give_kudos(
     user_id: int = Field(..., description="Nexus Mods member ID to give kudos to.", ge=1),
 ) -> str:
@@ -2164,7 +2201,7 @@ async def nexus_give_kudos(
     )
 
 
-@mcp.tool(name="nexus_remove_kudos", annotations={"title": "Remove kudos from a user (v2)"})
+@mcp.tool(name="nexus_remove_kudos", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Remove kudos from a user (v2)"})
 async def nexus_remove_kudos(
     user_id: int = Field(..., description="Nexus Mods member ID to remove kudos from.", ge=1),
 ) -> str:
@@ -2181,7 +2218,7 @@ async def nexus_remove_kudos(
     )
 
 
-@mcp.tool(name="nexus_add_favourite_game", annotations={"title": "Favourite a game (v2)"})
+@mcp.tool(name="nexus_add_favourite_game", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Favourite a game (v2)"})
 async def nexus_add_favourite_game(
     game_id: int = Field(..., description="Game ID (from nexus_search_games / nexus_get_game 'id').", ge=1),
 ) -> str:
@@ -2198,7 +2235,7 @@ async def nexus_add_favourite_game(
     )
 
 
-@mcp.tool(name="nexus_remove_favourite_game", annotations={"title": "Unfavourite a game (v2)"})
+@mcp.tool(name="nexus_remove_favourite_game", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unfavourite a game (v2)"})
 async def nexus_remove_favourite_game(
     game_id: int = Field(..., description="Game ID to remove from favourites.", ge=1),
 ) -> str:
@@ -2215,7 +2252,7 @@ async def nexus_remove_favourite_game(
     )
 
 
-@mcp.tool(name="nexus_like_comment", annotations={"title": "Like a comment (v2)"})
+@mcp.tool(name="nexus_like_comment", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Like a comment (v2)"})
 async def nexus_like_comment(
     comment_id: int = Field(..., description="Comment ID to like.", ge=1),
 ) -> str:
@@ -2232,7 +2269,7 @@ async def nexus_like_comment(
     )
 
 
-@mcp.tool(name="nexus_remove_comment_like", annotations={"title": "Unlike a comment (v2)"})
+@mcp.tool(name="nexus_remove_comment_like", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unlike a comment (v2)"})
 async def nexus_remove_comment_like(
     comment_id: int = Field(..., description="Comment ID to remove your like from.", ge=1),
 ) -> str:
@@ -2249,7 +2286,7 @@ async def nexus_remove_comment_like(
     )
 
 
-@mcp.tool(name="nexus_create_comment", annotations={"title": "Post a comment (v2)"})
+@mcp.tool(name="nexus_create_comment", annotations={**_MUTATING_ANNOTATIONS, "title": "Post a comment (v2)"})
 async def nexus_create_comment(
     thread_id: int = Field(..., description="Comment thread ID to reply in.", ge=1),
     body: str = Field(..., description="Comment body text (plain text).", min_length=1),
@@ -2273,7 +2310,7 @@ async def nexus_create_comment(
     )
 
 
-@mcp.tool(name="nexus_edit_comment", annotations={"title": "Edit a comment (v2)"})
+@mcp.tool(name="nexus_edit_comment", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Edit a comment (v2)"})
 async def nexus_edit_comment(
     comment_id: int = Field(..., description="Comment ID to edit (must be your own comment).", ge=1),
     body: str = Field(..., description="New comment body text (plain text).", min_length=1),
@@ -2292,16 +2329,18 @@ async def nexus_edit_comment(
     )
 
 
-@mcp.tool(name="nexus_discard_comment", annotations={"title": "Discard a comment (v2)"})
+@mcp.tool(name="nexus_discard_comment", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Discard a comment (v2)"})
 async def nexus_discard_comment(
     comment_id: int = Field(..., description="Comment ID to discard (soft-delete).", ge=1),
 ) -> str:
     """Discard (soft-delete) a comment via v2 GraphQL.
 
     Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-    Discarded comments are removed from public view and can be brought
-    back with nexus_restore_comment. Only the author (or a moderator)
-    can discard a comment.
+    Discarded comments are removed from public view. Only the author
+    (or a moderator) can discard a comment.
+    NOTE: restoring via nexus_restore_comment REQUIRES OAuth Bearer
+    auth - Nexus denies restore under apikey-only auth, so with an API
+    key alone discard is effectively one-way.
 
     Returns:
         JSON {discardComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
@@ -2312,7 +2351,7 @@ async def nexus_discard_comment(
     )
 
 
-@mcp.tool(name="nexus_restore_comment", annotations={"title": "Restore a comment (v2)"})
+@mcp.tool(name="nexus_restore_comment", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Restore a comment (v2)"})
 async def nexus_restore_comment(
     comment_id: int = Field(..., description="Comment ID to restore (undo discard).", ge=1),
 ) -> str:
@@ -2321,6 +2360,8 @@ async def nexus_restore_comment(
     Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
     Undo for nexus_discard_comment — the comment becomes publicly
     visible again.
+    REQUIRES OAuth Bearer auth: Nexus denies restore under apikey-only
+    auth even for your own comments.
 
     Returns:
         JSON {restoreComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
@@ -2364,6 +2405,9 @@ async def nexus_get_files_by_uid(
     Ideal when you only have the uid (e.g. from a .nxm link or your own mod
     pipeline). Backed by the v2 GraphQL API, which does NOT consume the v1
     REST rate-limit quota.
+    NOTE: the response does NOT include domainName/modId - resolve the
+    owning game/mod separately (e.g. nexus_search_by_md5) before calling
+    the download tools.
 
     Returns:
         JSON {totalFiles, _returned, files: [{fileId, name, version, category,
@@ -2430,7 +2474,7 @@ async def nexus_get_ignored_users() -> str:
     return await _gql_call("query { ignoredUsers { memberId name avatar viewerHasIgnored } }")
 
 
-@mcp.tool(name="nexus_ignore_user", annotations={"title": "Ignore a user (v2)"})
+@mcp.tool(name="nexus_ignore_user", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Ignore a user (v2)"})
 async def nexus_ignore_user(
     user_id: Optional[int] = Field(default=None, description="Nexus Mods member ID to ignore. Provide this or username.", ge=1),
     username: Optional[str] = Field(default=None, description="Exact Nexus username to ignore. Provide this or user_id."),
@@ -2439,6 +2483,8 @@ async def nexus_ignore_user(
 
     Personal preference only: no public side effect. Reversible with
     nexus_unignore_user. Provide user_id OR username (at least one).
+    NOTE: applies immediately but list reads (nexus_get_ignored_users)
+    can lag several seconds - wait before re-reading to confirm.
 
     Returns:
         JSON {ignoreUser: {success}} or an error string.
@@ -2455,7 +2501,7 @@ async def nexus_ignore_user(
     )
 
 
-@mcp.tool(name="nexus_unignore_user", annotations={"title": "Unignore a user (v2)"})
+@mcp.tool(name="nexus_unignore_user", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unignore a user (v2)"})
 async def nexus_unignore_user(
     user_id: Optional[int] = Field(default=None, description="Nexus Mods member ID to unignore. Provide this or username.", ge=1),
     username: Optional[str] = Field(default=None, description="Exact Nexus username to unignore. Provide this or user_id."),
@@ -2464,6 +2510,8 @@ async def nexus_unignore_user(
 
     Personal preference only: no public side effect. Provide user_id OR
     username (at least one).
+    NOTE: applies immediately but list reads (nexus_get_ignored_users)
+    can lag several seconds - wait before re-reading to confirm.
 
     Returns:
         JSON {unignoreUser: {success}} or an error string.
@@ -2503,7 +2551,7 @@ async def nexus_get_blocked_tags(
     )
 
 
-@mcp.tool(name="nexus_block_tag", annotations={"title": "Block a tag (v2)"})
+@mcp.tool(name="nexus_block_tag", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Block a tag (v2)"})
 async def nexus_block_tag(
     tag_id: int = Field(..., description="Tag ID to block (from nexus_get_tags / mod tag lists).", ge=1),
 ) -> str:
@@ -2511,6 +2559,9 @@ async def nexus_block_tag(
 
     Personal preference only: no public side effect. Reversible with
     nexus_unblock_tag. Only blockable tags can be blocked.
+    NOTE: preference mutations apply immediately but list reads
+    (nexus_get_blocked_tags) can lag several seconds - wait before
+    re-reading to confirm.
 
     Returns:
         JSON {blockTag: {success}} or an error string.
@@ -2521,13 +2572,15 @@ async def nexus_block_tag(
     )
 
 
-@mcp.tool(name="nexus_unblock_tag", annotations={"title": "Unblock a tag (v2)"})
+@mcp.tool(name="nexus_unblock_tag", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unblock a tag (v2)"})
 async def nexus_unblock_tag(
     tag_id: int = Field(..., description="Tag ID to unblock.", ge=1),
 ) -> str:
     """Unblock a previously blocked tag via v2 GraphQL.
 
-    Personal preference only: no public side effect.
+    Personal preference only: no public side effect. List reads
+    (nexus_get_blocked_tags) can lag several seconds after this
+    returns success - wait before re-reading to confirm.
 
     Returns:
         JSON {unblockTag: {success}} or an error string.
@@ -2577,6 +2630,9 @@ async def nexus_get_user_monthly_report(
     Companion to nexus_get_user_monthly_summary (which lists available
     months): this fetches the actual per-mod/per-game values for a chosen
     month. Useful for tracking your own mod's download history.
+    NOTE: Nexus hides this report for privacy-restricted accounts
+    ("UserMonthlyReport was hidden due to permissions") - that is an
+    API-side restriction, not a tool failure.
 
     Returns:
         JSON {userMonthlyReport: {userId, reportType, entries: [{month, year,
@@ -2617,7 +2673,7 @@ _OAUTH_REGISTER_NOTE = (
 )
 
 
-@mcp.tool(name="nexus_oauth_login", annotations={"title": "Start Nexus OAuth login"})
+@mcp.tool(name="nexus_oauth_login", annotations={**_MUTATING_ANNOTATIONS, "title": "Start Nexus OAuth login"})
 async def nexus_oauth_login(
     scope: str = Field(default="public", description="Space-separated OAuth scope. 'public' (or '') suffices for API access; 'public openid' adds identity."),
     redirect_uri: Optional[str] = Field(default=None, description="Override the callback URI. Must match the one registered with Nexus; override with env NEXUS_OAUTH_REDIRECT_URI."),
@@ -2664,7 +2720,7 @@ async def nexus_oauth_login(
     }, indent=2)
 
 
-@mcp.tool(name="nexus_oauth_exchange", annotations={"title": "Complete Nexus OAuth login"})
+@mcp.tool(name="nexus_oauth_exchange", annotations={**_MUTATING_ANNOTATIONS, "title": "Complete Nexus OAuth login"})
 async def nexus_oauth_exchange(
     code: str = Field(..., description="The 'code' query parameter from the OAuth redirect after nexus_oauth_login.", min_length=1),
     state: Optional[str] = Field(default=None, description="Optional 'state' value from the redirect URL; verified against the pending login when provided."),
@@ -2739,7 +2795,7 @@ async def nexus_oauth_status() -> str:
     return json.dumps(info, indent=2)
 
 
-@mcp.tool(name="nexus_oauth_refresh", annotations={"title": "Force OAuth token refresh"})
+@mcp.tool(name="nexus_oauth_refresh", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Force OAuth token refresh"})
 async def nexus_oauth_refresh() -> str:
     """Force a refresh of the OAuth access token via the refresh grant.
 
@@ -2763,7 +2819,7 @@ async def nexus_oauth_refresh() -> str:
     }, indent=2)
 
 
-@mcp.tool(name="nexus_oauth_logout", annotations={"title": "Log out of OAuth"})
+@mcp.tool(name="nexus_oauth_logout", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Log out of OAuth"})
 async def nexus_oauth_logout() -> str:
     """Delete stored OAuth tokens and fall back to NEXUS_API_KEY authentication.
 
@@ -2779,7 +2835,7 @@ async def nexus_oauth_logout() -> str:
     return json.dumps({"logged_out": True})
 
 
-@mcp.tool(name="nexus_update_mod_direct_download", annotations={"title": "Toggle mod direct download (v2)"})
+@mcp.tool(name="nexus_update_mod_direct_download", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Toggle mod direct download (v2)"})
 async def nexus_update_mod_direct_download(
     mod_uid: str = Field(..., description="Mod UID (numeric string, e.g. from nexus_get_mod 'uid')."),
     enabled: bool = Field(..., description="True to enable direct downloads for this mod, false to disable."),
@@ -3113,6 +3169,12 @@ async def nexus_search_media(
 ) -> str:
     """Search site-wide media (images, supporter images, videos) via v2 GraphQL.
 
+    NOTE: this endpoint is SERVER-SIDE FLAKY - it intermittently fails
+    with GraphQL "A name ... was not found" errors regardless of filter
+    combination. Identical calls often succeed on retry; just retry.
+    (An adultContent filter was deliberately removed: that filter
+    consistently errors server-side for both True and False.)
+
     Returns:
         JSON {totalCount, _returned, nodes: [...]}. Nodes are a union (Image,
         SupporterImage, Video) discriminated by __typename.
@@ -3237,6 +3299,10 @@ async def nexus_get_transactions(
 ) -> str:
     """Get Donation Points transactions for the current user (v2 GraphQL).
 
+    NOTE: Nexus hides the data under apikey-only auth ("hidden due to
+    permissions"). Requires OAuth login (nexus_oauth_login +
+    nexus_oauth_exchange); the tool surfaces the error otherwise.
+
     Returns:
         JSON {totalCount, filteredCount, transactions: [{id, type, label, amount,
         createdAt, creditorEntity, debitorEntity}]}.
@@ -3306,6 +3372,10 @@ async def nexus_get_user_monthly_report_by_id(
 ) -> str:
     """Get one monthly Donation Points report by report ID (v2 GraphQL).
 
+    NOTE: Nexus hides this report for privacy-restricted accounts
+    ("hidden due to permissions") - an API-side restriction, not a
+    tool failure.
+
     Returns:
         JSON {userId, entries: [{reportId, year, month, value, status, ratio,
         authorId, authorValue, gameId, modId, modCount, modValue, authorCount}]}.
@@ -3350,7 +3420,7 @@ async def nexus_get_collection_revision_upload_url() -> str:
 
 @mcp.tool(
     name="nexus_start_age_verification_flow",
-    annotations={"title": "Start age verification flow (v2)"},
+    annotations={**_MUTATING_ANNOTATIONS, "title": "Start age verification flow (v2)"},
 )
 async def nexus_start_age_verification_flow() -> str:
     """Start the age verification flow for the current user (v2 GraphQL).
@@ -3367,7 +3437,7 @@ async def nexus_start_age_verification_flow() -> str:
 
 @mcp.tool(
     name="nexus_start_age_verification_appeal_flow",
-    annotations={"title": "Start age verification appeal (v2)"},
+    annotations={**_MUTATING_ANNOTATIONS, "title": "Start age verification appeal (v2)"},
 )
 async def nexus_start_age_verification_appeal_flow() -> str:
     """Start the age verification appeal flow for the current user (v2 GraphQL).
@@ -3387,7 +3457,7 @@ async def nexus_start_age_verification_appeal_flow() -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(name="nexus_update_about_me", annotations={"title": "Update your About Me (v2)"})
+@mcp.tool(name="nexus_update_about_me", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update your About Me (v2)"})
 async def nexus_update_about_me(
     about: str = Field(..., description="New About Me text.", min_length=1),
     user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
@@ -3403,7 +3473,7 @@ async def nexus_update_about_me(
     )
 
 
-@mcp.tool(name="nexus_update_country", annotations={"title": "Update your country (v2)"})
+@mcp.tool(name="nexus_update_country", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update your country (v2)"})
 async def nexus_update_country(
     country: Optional[str] = Field(default=None, description="Country name/code. Omit to clear."),
     user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
@@ -3419,7 +3489,7 @@ async def nexus_update_country(
     )
 
 
-@mcp.tool(name="nexus_update_preferences", annotations={"title": "Update site preferences (v2)"})
+@mcp.tool(name="nexus_update_preferences", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update site preferences (v2)"})
 async def nexus_update_preferences(
     default_mods_tab: Optional[Literal["NEW", "TRENDING", "POPULAR", "RANDOM", "UPDATED"]] = Field(default=None, description="Default mods tab."),
     default_mods_tab_time_range: Optional[Literal["ALL_TIME", "ONE_DAY", "ONE_WEEK", "TWO_WEEKS", "FOUR_WEEKS", "ONE_YEAR"]] = Field(default=None, description="Default mods tab time range."),
@@ -3493,7 +3563,7 @@ async def nexus_update_preferences(
 
 @mcp.tool(
     name="nexus_update_user_donation_preferences",
-    annotations={"title": "Update DP donation preferences (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update DP donation preferences (v2)"},
 )
 async def nexus_update_user_donation_preferences(
     donate_straight: Optional[bool] = Field(default=None, description="Donate DP straight to authors."),
@@ -3527,7 +3597,7 @@ async def nexus_update_user_donation_preferences(
     )
 
 
-@mcp.tool(name="nexus_create_message", annotations={"title": "Send a private message (v2)"})
+@mcp.tool(name="nexus_create_message", annotations={**_MUTATING_ANNOTATIONS, "title": "Send a private message (v2)"})
 async def nexus_create_message(
     to: str = Field(..., description="Comma-separated recipient user IDs."),
     title: str = Field(..., description="Message title.", min_length=1),
@@ -3554,7 +3624,7 @@ async def nexus_create_message(
 
 @mcp.tool(
     name="nexus_close_collection_bug_report",
-    annotations={"title": "Close a collection bug report (v2)"},
+    annotations={**_DESTRUCTIVE_IDEMPOTENT_ANNOTATIONS, "title": "Close a collection bug report (v2)"},
 )
 async def nexus_close_collection_bug_report(
     bug_report_id: int = Field(..., description="Bug report ID.", ge=1),
@@ -3571,7 +3641,7 @@ async def nexus_close_collection_bug_report(
     )
 
 
-@mcp.tool(name="nexus_submit_moderation_fix", annotations={"title": "Submit a moderation fix (v2)"})
+@mcp.tool(name="nexus_submit_moderation_fix", annotations={**_MUTATING_ANNOTATIONS, "title": "Submit a moderation fix (v2)"})
 async def nexus_submit_moderation_fix(
     moderation_id: int = Field(..., description="Moderation ID to fix.", ge=1),
     description: Optional[str] = Field(default=None, description="Description of the fix."),
@@ -3612,7 +3682,7 @@ def _collection_manifest(
     return {"info": info, "mods": mods}
 
 
-@mcp.tool(name="nexus_create_collection", annotations={"title": "Create a collection (v2)"})
+@mcp.tool(name="nexus_create_collection", annotations={**_MUTATING_ANNOTATIONS, "title": "Create a collection (v2)"})
 async def nexus_create_collection(
     name: str = Field(..., description="Collection name.", min_length=1),
     domain_name: str = Field(..., description="Game domain name, e.g. 'skyrimspecialedition'."),
@@ -3655,7 +3725,7 @@ async def nexus_create_collection(
     )
 
 
-@mcp.tool(name="nexus_edit_collection", annotations={"title": "Edit a collection (v2)"})
+@mcp.tool(name="nexus_edit_collection", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Edit a collection (v2)"})
 async def nexus_edit_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
     name: Optional[str] = Field(default=None, description="New name."),
@@ -3688,7 +3758,7 @@ async def nexus_edit_collection(
 
 @mcp.tool(
     name="nexus_create_or_update_revision",
-    annotations={"title": "Create/update a collection revision (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Create/update a collection revision (v2)"},
 )
 async def nexus_create_or_update_revision(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
@@ -3729,7 +3799,7 @@ async def nexus_create_or_update_revision(
     )
 
 
-@mcp.tool(name="nexus_update_revision", annotations={"title": "Update a revision (v2)"})
+@mcp.tool(name="nexus_update_revision", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update a revision (v2)"})
 async def nexus_update_revision(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
     installation_info: Optional[str] = Field(default=None, description="Installation instructions."),
@@ -3752,7 +3822,7 @@ async def nexus_update_revision(
     )
 
 
-@mcp.tool(name="nexus_publish_revision", annotations={"title": "Publish a revision (v2)"})
+@mcp.tool(name="nexus_publish_revision", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Publish a revision (v2)"})
 async def nexus_publish_revision(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
     collection_status: Optional[Literal["listed", "unlisted", "under_moderation", "discarded"]] = Field(default=None, description="Status to publish with."),
@@ -3776,7 +3846,7 @@ async def nexus_publish_revision(
     )
 
 
-@mcp.tool(name="nexus_retract_revision", annotations={"title": "Retract a revision (v2)"})
+@mcp.tool(name="nexus_retract_revision", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Retract a revision (v2)"})
 async def nexus_retract_revision(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
     reason: str = Field(..., description="Retraction reason.", min_length=1),
@@ -3792,7 +3862,7 @@ async def nexus_retract_revision(
     )
 
 
-@mcp.tool(name="nexus_discard_revision", annotations={"title": "Discard a revision (v2)"})
+@mcp.tool(name="nexus_discard_revision", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Discard a revision (v2)"})
 async def nexus_discard_revision(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
     revision_number: int = Field(..., description="Revision number.", ge=1),
@@ -3811,7 +3881,7 @@ async def nexus_discard_revision(
     )
 
 
-@mcp.tool(name="nexus_discard_collection", annotations={"title": "Discard a collection (v2)"})
+@mcp.tool(name="nexus_discard_collection", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Discard a collection (v2)"})
 async def nexus_discard_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
     reason: str = Field(..., description="Discard reason.", min_length=1),
@@ -3829,7 +3899,7 @@ async def nexus_discard_collection(
     )
 
 
-@mcp.tool(name="nexus_list_collection", annotations={"title": "List a collection (v2)"})
+@mcp.tool(name="nexus_list_collection", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "List a collection (v2)"})
 async def nexus_list_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
 ) -> str:
@@ -3844,7 +3914,7 @@ async def nexus_list_collection(
     )
 
 
-@mcp.tool(name="nexus_unlist_collection", annotations={"title": "Unlist a collection (v2)"})
+@mcp.tool(name="nexus_unlist_collection", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unlist a collection (v2)"})
 async def nexus_unlist_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
 ) -> str:
@@ -3859,7 +3929,7 @@ async def nexus_unlist_collection(
     )
 
 
-@mcp.tool(name="nexus_create_changelog", annotations={"title": "Create a changelog (v2)"})
+@mcp.tool(name="nexus_create_changelog", annotations={**_MUTATING_ANNOTATIONS, "title": "Create a changelog (v2)"})
 async def nexus_create_changelog(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
     description: str = Field(..., description="Changelog text.", min_length=1),
@@ -3875,7 +3945,7 @@ async def nexus_create_changelog(
     )
 
 
-@mcp.tool(name="nexus_update_changelog", annotations={"title": "Update a changelog (v2)"})
+@mcp.tool(name="nexus_update_changelog", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update a changelog (v2)"})
 async def nexus_update_changelog(
     changelog_id: int = Field(..., description="Changelog ID.", ge=1),
     description: str = Field(..., description="New changelog text.", min_length=1),
@@ -3896,7 +3966,7 @@ async def nexus_update_changelog(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(name="nexus_create_tag", annotations={"title": "Create a tag (v2)"})
+@mcp.tool(name="nexus_create_tag", annotations={**_MUTATING_ANNOTATIONS, "title": "Create a tag (v2)"})
 async def nexus_create_tag(
     name: str = Field(..., description="Tag name.", min_length=1),
     category_id: Optional[int] = Field(default=None, description="Tag category ID."),
@@ -3923,7 +3993,7 @@ async def nexus_create_tag(
     )
 
 
-@mcp.tool(name="nexus_update_tag", annotations={"title": "Update a tag (v2)"})
+@mcp.tool(name="nexus_update_tag", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Update a tag (v2)"})
 async def nexus_update_tag(
     tag_id: int = Field(..., description="Tag ID.", ge=1),
     name: Optional[str] = Field(default=None, description="New tag name."),
@@ -3953,7 +4023,7 @@ async def nexus_update_tag(
     )
 
 
-@mcp.tool(name="nexus_discard_tag", annotations={"title": "Discard a tag (v2)"})
+@mcp.tool(name="nexus_discard_tag", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Discard a tag (v2)"})
 async def nexus_discard_tag(
     tag_id: int = Field(..., description="Tag ID.", ge=1),
 ) -> str:
@@ -3970,7 +4040,7 @@ async def nexus_discard_tag(
 
 @mcp.tool(
     name="nexus_add_badge_to_collection",
-    annotations={"title": "Add a badge to a collection (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Add a badge to a collection (v2)"},
 )
 async def nexus_add_badge_to_collection(
     badge_id: int = Field(..., description="Badge ID (see nexus_get_badges).", ge=1),
@@ -3989,7 +4059,7 @@ async def nexus_add_badge_to_collection(
 
 @mcp.tool(
     name="nexus_remove_badge_from_collection",
-    annotations={"title": "Remove a badge from a collection (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Remove a badge from a collection (v2)"},
 )
 async def nexus_remove_badge_from_collection(
     badge_id: int = Field(..., description="Badge ID (see nexus_get_badges).", ge=1),
@@ -4006,7 +4076,7 @@ async def nexus_remove_badge_from_collection(
     )
 
 
-@mcp.tool(name="nexus_reorder_item", annotations={"title": "Reorder collection media (v2)"})
+@mcp.tool(name="nexus_reorder_item", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Reorder collection media (v2)"})
 async def nexus_reorder_item(
     id: int = Field(..., description="ID of the item (collection image/video) to move.", ge=1),
     target_id: int = Field(..., description="ID of the item to position relative to.", ge=1),
@@ -4030,7 +4100,7 @@ async def nexus_reorder_item(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(name="nexus_hide_comment", annotations={"title": "Hide a comment (v2)"})
+@mcp.tool(name="nexus_hide_comment", annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Hide a comment (v2)"})
 async def nexus_hide_comment(
     comment_id: int = Field(..., description="Comment ID to hide.", ge=1),
     reason: str = Field(..., description="Public reason for hiding.", min_length=1),
@@ -4047,7 +4117,7 @@ async def nexus_hide_comment(
     )
 
 
-@mcp.tool(name="nexus_lock_comment", annotations={"title": "Lock a comment (v2)"})
+@mcp.tool(name="nexus_lock_comment", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Lock a comment (v2)"})
 async def nexus_lock_comment(
     comment_id: int = Field(..., description="Comment ID to lock.", ge=1),
 ) -> str:
@@ -4062,7 +4132,7 @@ async def nexus_lock_comment(
     )
 
 
-@mcp.tool(name="nexus_lock_comment_thread", annotations={"title": "Lock a comment thread (v2)"})
+@mcp.tool(name="nexus_lock_comment_thread", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Lock a comment thread (v2)"})
 async def nexus_lock_comment_thread(
     comment_thread_id: int = Field(..., description="Comment thread ID to lock.", ge=1),
 ) -> str:
@@ -4079,7 +4149,7 @@ async def nexus_lock_comment_thread(
     )
 
 
-@mcp.tool(name="nexus_pin_comment", annotations={"title": "Pin a comment (v2)"})
+@mcp.tool(name="nexus_pin_comment", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Pin a comment (v2)"})
 async def nexus_pin_comment(
     comment_id: int = Field(..., description="Comment ID to pin.", ge=1),
 ) -> str:
@@ -4096,7 +4166,7 @@ async def nexus_pin_comment(
     )
 
 
-@mcp.tool(name="nexus_unpin_comment", annotations={"title": "Unpin a comment (v2)"})
+@mcp.tool(name="nexus_unpin_comment", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unpin a comment (v2)"})
 async def nexus_unpin_comment(
     comment_id: int = Field(..., description="Comment ID to unpin.", ge=1),
 ) -> str:
@@ -4115,7 +4185,7 @@ async def nexus_unpin_comment(
 
 @mcp.tool(
     name="nexus_reorder_pinned_comments",
-    annotations={"title": "Reorder pinned comments (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Reorder pinned comments (v2)"},
 )
 async def nexus_reorder_pinned_comments(
     comment_ids: str = Field(..., description="Comma-separated pinned comment IDs in the desired order."),
@@ -4138,7 +4208,7 @@ async def nexus_reorder_pinned_comments(
 
 @mcp.tool(
     name="nexus_clear_comment_moderation_status",
-    annotations={"title": "Clear comment moderation status (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Clear comment moderation status (v2)"},
 )
 async def nexus_clear_comment_moderation_status(
     comment_id: int = Field(..., description="Comment ID.", ge=1),
@@ -4156,7 +4226,7 @@ async def nexus_clear_comment_moderation_status(
 
 @mcp.tool(
     name="nexus_clear_comment_thread_moderation_status",
-    annotations={"title": "Clear thread moderation status (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Clear thread moderation status (v2)"},
 )
 async def nexus_clear_comment_thread_moderation_status(
     comment_thread_id: int = Field(..., description="Comment thread ID.", ge=1),
@@ -4177,7 +4247,7 @@ async def nexus_clear_comment_thread_moderation_status(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(name="nexus_track_app_metric", annotations={"title": "Track an app metric (v2)"})
+@mcp.tool(name="nexus_track_app_metric", annotations={**_MUTATING_ANNOTATIONS, "title": "Track an app metric (v2)"})
 async def nexus_track_app_metric(
     event_type: Literal["collection_started", "collection_completed"] = Field(..., description="Metric event type."),
     entity_type: Literal["collection"] = Field(..., description="Metric entity type."),
@@ -4204,7 +4274,7 @@ async def nexus_track_app_metric(
 
 @mcp.tool(
     name="nexus_block_mods_from_earning_dp",
-    annotations={"title": "Block a user's mods from earning DP (v2)"},
+    annotations={**_DESTRUCTIVE_ANNOTATIONS, "title": "Block a user's mods from earning DP (v2)"},
 )
 async def nexus_block_mods_from_earning_dp(
     user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
@@ -4224,7 +4294,7 @@ async def nexus_block_mods_from_earning_dp(
 
 @mcp.tool(
     name="nexus_unblock_mods_from_earning_dp",
-    annotations={"title": "Unblock a user's mods from earning DP (v2)"},
+    annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Unblock a user's mods from earning DP (v2)"},
 )
 async def nexus_unblock_mods_from_earning_dp(
     user_id: Optional[int] = Field(default=None, description="User ID. Omit for the current user."),
@@ -4242,7 +4312,7 @@ async def nexus_unblock_mods_from_earning_dp(
     )
 
 
-@mcp.tool(name="nexus_upload_attachment", annotations={"title": "Upload an attachment (v2)"})
+@mcp.tool(name="nexus_upload_attachment", annotations={**_MUTATING_ANNOTATIONS, "title": "Upload an attachment (v2)"})
 async def nexus_upload_attachment(
     filename: str = Field(..., description="File name including extension.", min_length=1),
     content_base64: str = Field(..., description="Base64-encoded file content.", min_length=1),

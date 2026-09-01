@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![CI](https://github.com/Talya1412/nexus-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Talya1412/nexus-mcp/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/nexus-mods-mcp)](https://pypi.org/project/nexus-mods-mcp/)
 [![MCP](https://img.shields.io/badge/protocol-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
 
 **135 MCP tools** for [Nexus Mods](https://www.nexusmods.com) — wraps the official

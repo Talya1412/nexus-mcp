@@ -80,7 +80,7 @@ jobs:
           python -c "
           import asyncio, nexus_mcp
           tools = asyncio.run(nexus_mcp.mcp.list_tools())
-          assert len(tools) == 135, f'expected 135 tools, got {len(tools)}'
+          assert len(tools) == 138, f'expected 138 tools, got {len(tools)}'
           assert len({t.name for t in tools}) == len(tools), 'duplicate tool names'
           assert all(t.description for t in tools), 'tool with empty description'
           print(f'wheel OK: {len(tools)} tools, v{nexus_mcp.__version__}')

@@ -3,7 +3,7 @@ import asyncio
 
 import nexus_mcp
 
-EXPECTED_TOOLS = 135
+EXPECTED_TOOLS = 138
 
 
 def _tools():

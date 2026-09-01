@@ -61,7 +61,7 @@ async def nexus_search_mods(
     sort: Literal[
         "endorsements", "downloads", "unique_downloads", "created_at", "updated_at",
         "name", "relevance", "size", "last_comment",
-    ] = Field(default="endorsements", description="Sort key. Array order is precedence but only one key is exposed here."),
+    ] = Field(default="endorsements", description="Sort key - see enum values below; only one key is exposed."),
     direction: Literal["DESC", "ASC"] = Field(default="DESC", description="Sort direction."),
     min_endorsements: int | None = Field(default=None, description="Only mods with at least this many endorsements.", ge=0),
     min_downloads: int | None = Field(default=None, description="Only mods with at least this many downloads.", ge=0),
@@ -69,10 +69,15 @@ async def nexus_search_mods(
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page. Server silently caps page size (~50-80); check '_returned'.", ge=1, le=100),
 ) -> str:
-    """Search Nexus Mods with free text + filters, sorted and paginated.
+    """Search Nexus mods by name with free text + filters, sorted and paginated [via v2] [v2 - no v1 quota].
+    v1 has no free-text search, so this is the only way to search by name.
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{modId, uid, name, summary, author, version, downloads, endorsements, game, uploader, ...}]}; description (full BBCode) NOT included - use nexus_get_mod_v2 for full details.
+        JSON {totalCount, _returned, nodes: [{modId, uid, name, summary, author,
+        version, downloads, endorsements, fileSize, game, modCategory, uploader,
+        pictureUrl, ...}]}. Paginate with offset += _returned until
+        offset >= totalCount. Note: description (full BBCode) is NOT included
+        here - use nexus_get_mod_v2 for full mod details.
     """
     flt: dict[str, Any] = {}
     if term:
@@ -105,6 +110,10 @@ async def nexus_search_mods(
     if isinstance(page, dict) and "totalCount" in page:
         nodes = page.get("nodes") or []
         result = {**page, "nodes": nodes, "_returned": len(nodes)}
+        result["_hint"] = (
+            "Paginate: offset += _returned while offset < totalCount. "
+            "Page size may be capped silently by the server."
+        )
         return json.dumps(result, separators=(",", ":"), ensure_ascii=False)
     return data
 
@@ -138,10 +147,13 @@ async def nexus_get_mod_v2(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID (same as v1).", ge=1),
 ) -> str:
-    """Get rich mod details (v2): raw-BBCode description, tags, requirements, complete file list - none exposed by v1 REST.
+    """Get rich mod details - full BBCode description, tags, requirements, and complete file list [via v2] [v2 - no v1 quota].
+    nexus_get_mod_v2 is the only way to get the full BBCode description.
 
     Returns:
-        JSON {mod: {..., description (BBCode + literal <br /> tags - render or strip before display), requirements}, files: [{fileId, name, version, category, sizeInBytes, totalDownloads, date, description}]}.
+        JSON {mod: {..., description (BBCode + literal <br /> tags - render or
+        strip before display), requirements}, files: [{fileId, name, version,
+        category, sizeInBytes, totalDownloads, date, description}]}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -186,12 +198,12 @@ async def nexus_get_user_v2(
     member_id: int | None = Field(default=None, description="Numeric member ID (user_id from nexus_validate_key).", ge=1),
     username: str | None = Field(default=None, description="Exact Nexus username, e.g. 'Talya1412'."),
 ) -> str:
-    """Get a public Nexus Mods user profile by member ID or exact username.
-
+    """Get a public Nexus Mods user profile by member ID or exact username [via v2] [v2 - no v1 quota].
     Provide exactly one of member_id or username.
 
     Returns:
-        JSON {memberId, name, about, avatar, modCount, joined, kudos, contributedModCount, collectionCount, recognizedAuthor, lastActive, posts}.
+        JSON {memberId, name, about, avatar, modCount, joined, kudos,
+        contributedModCount, collectionCount, recognizedAuthor, lastActive, posts}.
     """
     if bool(member_id) == bool(username):
         return "Error: provide exactly one of member_id or username."
@@ -234,21 +246,22 @@ async def nexus_search_collections(
     domain_name: str | None = Field(default=None, description=DOMAIN_DESC),
     sort: Literal[
         "endorsements", "downloads", "created_at", "updated_at", "rating", "recent_rating", "relevance",
-    ] = Field(default="endorsements", description="Sort key."),
+    ] = Field(default="endorsements", description="Sort key - see enum values below."),
     direction: Literal["DESC", "ASC"] = Field(default="DESC", description="Sort direction."),
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page. Server may silently cap page size; check '_returned'.", ge=1, le=100),
 ) -> str:
-    """Search Nexus Mods collections (curated mod packs) with free text.
+    """Search Nexus Mods collections (curated mod packs) by name/summary with free text [via v2] [v2 - no v1 quota].
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{slug, name, summary, endorsements, totalDownloads, overallRating, game, user, ...}]}.
+        JSON {totalCount, _returned, nodes: [{slug, name, summary, endorsements,
+        totalDownloads, overallRating, game, user, ...}]}.
     """
     flt: dict[str, Any] = {}
     if term:
         flt["generalSearch"] = [{"value": term, "op": "WILDCARD"}]
     if domain_name:
-        flt["gameDomainName"] = [{"value": domain_name, "op": "EQUALS"}]
+        flt["gameDomain"] = [{"value": domain_name, "op": "EQUALS"}]
 
     collection_sort_map = {
         "endorsements": "endorsements",
@@ -303,12 +316,12 @@ query Introspect($t: String!) {
 async def nexus_graphql_introspect(
     type_name: str = Field(..., description="GraphQL type name to introspect, e.g. 'Mod', 'ModsFilter', 'Collection'."),
 ) -> str:
-    """Introspect any type in the Nexus v2 GraphQL schema.
-
-    Useful for discovering filters, sorts, and fields before composing a query with nexus_graphql_query.
+    """Introspect any type in the Nexus v2 GraphQL schema [via v2] [v2 - no v1 quota].
+    Use it to discover filters, sorts, and fields before composing a query with nexus_graphql_query.
 
     Returns:
-        JSON {name, kind, description, fields: [{name, type}], inputFields, enumValues} or null if the type does not exist.
+        JSON {name, kind, description, fields: [{name, type}], inputFields,
+        enumValues} or null if the type does not exist.
     """
     return await _gql_call(_GQL_INTROSPECT_QUERY, {"t": type_name})
 
@@ -321,12 +334,12 @@ async def nexus_graphql_query(
     query: str = Field(..., description="GraphQL query document, e.g. 'query { games(count: 5) { nodes { name domainName } } }'."),
     variables: str = Field(default="{}", description="JSON object string with query variables, e.g. '{\"term\": \"sky\"}'."),
 ) -> str:
-    """Run a raw query against the Nexus v2 GraphQL API (power-user escape hatch).
-
-    Read-only: most mutations need OAuth scopes this server lacks and fail cleanly. Introspect types with nexus_graphql_introspect first.
+    """Run a raw query against the Nexus v2 GraphQL API [via v2] [v2 - no v1 quota].
+    Introspect types with nexus_graphql_introspect first; most mutations require OAuth scopes this server lacks and fail cleanly - use for read-only queries.
 
     Returns:
-        The raw GraphQL 'data' payload as JSON, or 'Error: ...' with server-side GraphQL error messages.
+        The raw GraphQL 'data' payload as JSON, or 'Error: ...' with the
+        server-side GraphQL error messages.
     """
     try:
         parsed_vars = json.loads(variables)
@@ -356,17 +369,19 @@ query SearchUsers($filter: UsersSearchFilter, $sort: [UsersSearchSort!], $offset
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Search Nexus users (v2)"},
 )
 async def nexus_search_users(
-    term: str = Field(..., description="Username search term."),
+    term: str = Field(..., description="Username to search for - partial names match in wildcard mode."),
     mode: Literal["wildcard", "exact"] = Field(default="wildcard", description="wildcard = substring match; exact = exact username match."),
-    sort: Literal["name", "relevance"] = Field(default="relevance", description="Sort key."),
+    sort: Literal["name", "relevance"] = Field(default="relevance", description="Sort key - see enum values below."),
     direction: Literal["DESC", "ASC"] = Field(default="ASC", description="Sort direction."),
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
-    """Search Nexus Mods users by username (v2 GraphQL); supports partial names unlike nexus_get_user_v2.
+    """Search Nexus Mods users by username [via v2] [v2 - no v1 quota].
+    Unlike nexus_get_user_v2, this supports partial names.
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{memberId, name, avatar, modCount, joined, kudos, ...}]}.
+        JSON {totalCount, _returned, nodes: [{memberId, name, avatar, modCount,
+        joined, kudos, ...}]}. Paginate with offset += _returned.
     """
     if mode == "exact":
         flt: dict[str, Any] = {"nameExact": [{"value": term}]}
@@ -404,18 +419,18 @@ query SearchGames($filter: GamesSearchFilter, $sort: [GamesSearchSort!], $offset
 async def nexus_search_games(
     term: str | None = Field(default=None, description="Free-text term matched against game names (wildcard match). Optional."),
     sort: Literal["downloads", "mods", "collections", "name", "approved", "relevance"] = Field(
-        default="downloads", description="Sort key."
+        default="downloads", description="Sort key - see enum values below."
     ),
     direction: Literal["DESC", "ASC"] = Field(default="DESC", description="Sort direction."),
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
-    """Search Nexus Mods games by name, sorted and paginated (v2 GraphQL).
-
+    """Search Nexus games by name with free text, sorted and paginated [via v2] [v2 - no v1 quota].
     Complements nexus_get_games (full cached catalog).
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{domainName, name, id, modCount, downloadCount, genre, forumUrl, supportsVortex, approvedAt}]}.
+        JSON {totalCount, _returned, nodes: [{domainName, name, id, modCount,
+        downloadCount, genre, forumUrl, supportsVortex, approvedAt}]}.
     """
     flt: dict[str, Any] | None = None
     if term:
@@ -442,12 +457,12 @@ async def nexus_resolve_domain(
         description="Game display name or partial name, e.g. 'Skyrim Special Edition', 'fallout 4', 'witcher'.",
     ),
 ) -> str:
-    """Resolve a game display name to its `domain_name` slug (v2 GraphQL).
-
-    Call first when you only know the game's name; most tools need the lowercase domain slug, not the display name.
+    """Resolve a game display name to its lowercase `domain_name` slug [via v2] [v2 - no v1 quota].
+    Call this first when you only know the game's name - most tools require the slug, not the display name.
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{domainName, name, id}]}; best matches first - take `domainName` from the intended node.
+        JSON {totalCount, _returned, nodes: [{domainName, name, id}]} -
+        best matches first; take `domainName` from the intended node.
     """
     data = await _gql_call(
         _GAMES_SEARCH_QUERY,
@@ -478,7 +493,7 @@ query GameDetail($domain: String!) {
 async def nexus_get_game_v2(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
-    """Get rich game details via v2 GraphQL: mod/download/collection counts, genre, forum URL, Vortex support.
+    """Get rich game details - mod/download/collection counts, genre, forum URL, Vortex support [via v2] [v2 - no v1 quota].
 
     Returns:
         JSON game object, or {error: ...} for unknown domains.

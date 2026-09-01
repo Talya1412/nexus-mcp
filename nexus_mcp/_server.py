@@ -21,6 +21,9 @@ mcp = FastMCP(
         "- Responses are compact JSON; parse with a JSON parser (do not regex text). Tool failures come "
         "back as 'Error: ...' strings, not exceptions - read the message and adjust inputs.\n"
         "- Tools carry readOnly/destructive/idempotent annotations; treat destructive tools as "
-        "user-confirm-worthy."
+        "user-confirm-worthy.\n"
+        "- Web scraping (nexus_scrape_page, nexus_scrape_mod_page, nexus_scrape_mod_posts) "
+        "reads public nexusmods.com pages via plain HTTPS - no API key, no quota, and only "
+        "https://www.nexusmods.com/* URLs are accepted (SSRF guard)."
     ),
 )

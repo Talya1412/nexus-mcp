@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/nexus-mods-mcp)](https://pypi.org/project/nexus-mods-mcp/)
 [![MCP](https://img.shields.io/badge/protocol-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
 
-**135 MCP tools** for [Nexus Mods](https://www.nexusmods.com) — wraps the official
+**138 MCP tools** for [Nexus Mods](https://www.nexusmods.com) — wraps the official
 **REST API v1** and **GraphQL API v2** as a Model Context Protocol server (Python +
 FastMCP, stdio transport). Lets any MCP client (Claude Desktop, opencode, Cursor, ...)
 browse games, inspect mods and files, run free-text searches, download mod files with
@@ -14,11 +14,7 @@ checksum verification, manage endorsements, comments, collections, and user pref
 
 ## Highlights
 
-- **Agent-optimized token budget** — compact one-pass tool descriptions (~60% smaller
-  than raw API docs), compact JSON responses, and server-level instructions that state
-  quota strategy, pagination (`offset += _returned`), and error conventions once —
-  so agents spend context on the task, not on boilerplate.
-- **Full API coverage** — 69 read tools + 66 mutations across v1 REST and v2 GraphQL.
+- **Full API coverage** — 72 read tools + 66 mutations across v1 REST and v2 GraphQL.
   Includes things v1 doesn't offer: free-text mod search, batch mod lookups, comment
   threads, collection lifecycle, and quota-free GraphQL reads.
 - **Built-in TTL cache** — repeated identical GETs within a session don't consume quota
@@ -314,14 +310,14 @@ v1 REST and v2 GraphQL.
   — categories are only available via v2.
 - `nexus_search_comments` currently returns HTTP 500 from Nexus itself, regardless of
   parameters; `nexus_get_comment_thread` is the working alternative.
-- Scraping the nexusmods.com website directly gets blocked by Cloudflare — use the API
-  tools instead.
-
+- Web scraping (nexus_scrape_page, nexus_scrape_mod_page, nexus_scrape_mod_posts): read public
+  nexusmods.com pages without an API key and consuming no quota - HTTPS only, SSRF-guarded;
+  some pages may still be Cloudflare-blocked, in which case use the API tools instead.
 ## Development
 
 ```bash
 pip install -e ".[dev]"    # editable install with pytest + ruff
-python -m pytest           # 72-test suite, fully offline (mocked HTTP)
+python -m pytest           # 95-test suite,, fully offline (mocked HTTP)
 python -m ruff check nexus_mcp tests
 python -m nexus_mcp        # run on stdio
 ```

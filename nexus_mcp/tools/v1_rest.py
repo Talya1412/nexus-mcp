@@ -39,9 +39,10 @@ _LOG = logging.getLogger(__name__)
     },
 )
 async def nexus_validate_key() -> str:
-    """Validate the configured Nexus Mods API key and identify the account.
+    """Validate the configured Nexus Mods API key [v1 - uses v1 REST quota].
+    Exempt from hourly rate limits; safe to use to check the key or probe remaining quota.
 
-    Returns: JSON {user_id, username, is_premium, is_supporter, email, profile_url}.
+    Returns user_id, username, is_premium, is_supporter, email, and profile_url.
     """
     return await _call("GET", "/v1/users/validate.json")
 
@@ -67,9 +68,12 @@ async def nexus_get_games(
         description="Optional case-insensitive substring filter applied client-side to game name/domain_name (reduces output size).",
     ),
 ) -> str:
-    """List all games on Nexus Mods with their domain_name, mod counts, and file counts.
+    """List all Nexus games with domain_name, mod counts, and file counts [v1 - uses v1 REST quota].
+    Use this to find the correct lowercase domain_name slug for other tools.
 
-    Returns: JSON array of {id, domain_name, name, genre, mods, file_count, downloads, approved_date, collections} plus '_rl' rate-limit snapshot.
+    Returns:
+        JSON array of games: {id, domain_name, name, genre, mods, file_count,
+        downloads, approved_date, collections}. With '_rl' rate-limit snapshot.
     """
     query = {"include_unapproved": str(include_unapproved).lower()}
     try:
@@ -100,9 +104,11 @@ async def nexus_get_games(
 async def nexus_get_game(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
-    """Get details for one game: stats, file counts, download counts, and its file/mod categories.
+    """Get details for one game: stats, download counts, and file/mod categories [v1 - uses v1 REST quota].
 
-    Returns: JSON object with game info including a 'categories' list (category_id, name, parent_category).
+    Returns:
+        JSON object with game info including a 'categories' list (category_id,
+        name, parent_category).
     """
     if err := _check_domain(domain_name):
         return err
@@ -127,9 +133,12 @@ async def nexus_get_mod(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID from the mod page URL, e.g. 959 for forzahorizon6/mods/959.", ge=1),
 ) -> str:
-    """Get full details for one mod: name, author, version, description, endorsement and download counts, upload dates.
+    """Get full details for one mod: description, version, author, and counts [v1 - uses v1 REST quota].
 
-    Returns: JSON mod info object (mod_id, name, summary, description BBCode, version, author, endorsement_count, mod_downloads, created/updated timestamps, ...). Cached 5 min.
+    Returns:
+        JSON mod info object (mod_id, name, summary, description BBCode, version,
+        author, endorsement_count, mod_downloads, created/updated timestamps, ...).
+        Server-cached 5 minutes.
     """
     if err := _check_domain(domain_name):
         return err
@@ -150,9 +159,11 @@ async def nexus_get_mod_changelogs(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
 ) -> str:
-    """Get the changelog history for one mod.
+    """Get the changelog history for one mod [v1 - uses v1 REST quota].
 
-    Returns: JSON dict mapping version -> list of HTML changelog strings, e.g. {"1.1": ["<p>Fixed X</p>"], "1.2": ["<p>Added Y</p>"]}.
+    Returns:
+        JSON dict mapping version -> list of HTML changelog strings,
+        e.g. {"1.1": ["<p>Fixed X</p>"], "1.2": ["<p>Added Y</p>"]}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -172,10 +183,7 @@ async def nexus_get_mod_changelogs(
 async def nexus_get_latest_added(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
-    """Get the 10 most recently added mods for a game.
-
-    Returns: JSON array of mod info objects.
-    """
+    """Get the 10 most recently added mods for a game [v1 - uses v1 REST quota]."""
     if err := _check_domain(domain_name):
         return err
     return await _call("GET", f"/v1/games/{domain_name}/mods/latest_added.json")
@@ -194,10 +202,7 @@ async def nexus_get_latest_added(
 async def nexus_get_latest_updated(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
-    """Get the 10 most recently updated mods for a game.
-
-    Returns: JSON array of mod info objects.
-    """
+    """Get the 10 most recently updated mods for a game [v1 - uses v1 REST quota]."""
     if err := _check_domain(domain_name):
         return err
     return await _call("GET", f"/v1/games/{domain_name}/mods/latest_updated.json")
@@ -216,10 +221,7 @@ async def nexus_get_latest_updated(
 async def nexus_get_trending(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
-    """Get the 10 currently trending mods for a game.
-
-    Returns: JSON array of mod info objects.
-    """
+    """Get the 10 currently trending mods for a game [v1 - uses v1 REST quota]."""
     if err := _check_domain(domain_name):
         return err
     return await _call("GET", f"/v1/games/{domain_name}/mods/trending.json")
@@ -239,9 +241,11 @@ async def nexus_get_updated_mods(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     period: Literal["1d", "1w", "1m"] = Field(..., description="Time window: '1d' (last day), '1w' (last week), or '1m' (last month)."),
 ) -> str:
-    """Get all mods for a game whose files/activity changed within a time window.
+    """Get all mods for a game that changed within a time window [v1 - uses v1 REST quota].
 
-    Returns: JSON array of {mod_id, latest_file_update (epoch), latest_mod_activity (epoch)}. Server-cached 5 minutes.
+    Returns:
+        JSON array of {mod_id, latest_file_update (epoch), latest_mod_activity (epoch)}.
+        Server-cached 5 minutes. Useful to check if your own mod page saw activity.
     """
     if err := _check_domain(domain_name):
         return err
@@ -273,9 +277,12 @@ async def nexus_get_mod_files(
         ),
     ),
 ) -> str:
-    """List all files attached to a mod, with versions, sizes, upload dates, and update chain.
+    """List all files attached to a mod with versions, sizes, and update chain [v1 - uses v1 REST quota].
 
-    Returns: JSON {files: [...], file_updates: [{old_file_id, new_file_id, ...}]}. category_id mapping: 1=MAIN, 2=UPDATE, 3=OPTIONAL, 4=OLD_VERSION, 6=DELETED, 7=ARCHIVED.
+    Returns:
+        JSON {files: [...], file_updates: [{old_file_id, new_file_id, ...}]}.
+        File category_id mapping: 1=MAIN, 2=UPDATE, 3=OPTIONAL, 4=OLD_VERSION,
+        6=DELETED, 7=ARCHIVED.
     """
     if err := _check_domain(domain_name):
         return err
@@ -298,10 +305,7 @@ async def nexus_get_file_info(
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
     file_id: int = Field(..., description="Numeric file ID, e.g. 2291.", ge=1),
 ) -> str:
-    """Get details for a single file of a mod: version, size, MD5, virus scan link, changelog.
-
-    Returns: JSON file info object.
-    """
+    """Get details for a single mod file: version, size, MD5, virus scan link [v1 - uses v1 REST quota]."""
     if err := _check_domain(domain_name):
         return err
     return await _call("GET", f"/v1/games/{domain_name}/mods/{mod_id}/files/{file_id}.json")
@@ -330,12 +334,17 @@ async def nexus_get_download_link(
         description="'expires' (unix epoch seconds, absolute timestamp) from a .nxm download link. REQUIRED for non-premium accounts.",
     ),
 ) -> str:
-    """Get a short-lived download URL for a mod file from the Nexus CDN.
+    """Get a short-lived download URL for a mod file from the Nexus CDN [v1 - uses v1 REST quota].
+    Non-premium accounts MUST pass 'key'/'expires' from a .nxm download link; premium accounts can omit them.
 
-    Non-premium accounts MUST pass 'key' and 'expires' from a .nxm download link generated on the Nexus website.
-
-    Returns: JSON array of {URI, name, short_name} mirrors; first entry preferred; links are short-lived.
+    Returns:
+        JSON array of {URI, name, short_name} mirrors - the first entry is the
+        preferred location. Links are short-lived; do not cache them.
     """
+    if not isinstance(key, str):
+        key = None
+    if not isinstance(expires, int):
+        expires = None
     if err := _check_domain(domain_name):
         return err
     query: dict[str, Any] = {}
@@ -382,11 +391,14 @@ async def nexus_download_mod_file(
         ge=1,
     ),
 ) -> str:
-    """Resolve a mod file's CDN link and stream it to a local file.
+    """Download a mod file to disk via its CDN link [v1 - uses v1 REST quota].
+    Non-premium accounts MUST pass the key/expires pair from a .nxm download link.
 
-    Non-premium accounts MUST pass key/expires from a .nxm download link; saves MD5 + SHA-256 checksums (verify MD5 against nexus_get_file_info).
+    Downloads the actual file behind nexus_get_download_link, saving it to disk
+    with MD5 + SHA-256 checksums (verify MD5 against nexus_get_file_info).
 
-    Returns: JSON {file, bytes, md5, sha256, overwrote, mirror, _rl} or an error string.
+    Returns:
+        JSON {file, bytes, md5, sha256, overwrote, mirror, _rl} or an error string.
     """
     # Direct-call artifact: unpassed Optional Field params arrive as FieldInfo
     if not isinstance(destination, str):
@@ -501,9 +513,11 @@ async def nexus_search_by_md5(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     md5_hash: str = Field(..., description="MD5 hash of the file to look up (32 hex characters).", min_length=32, max_length=32),
 ) -> str:
-    """Look up which mod and file on Nexus matches a file's MD5 hash (useful to identify an installed file).
+    """Identify an installed file by looking up its MD5 hash [v1 - uses v1 REST quota].
+    Use the 32-hex MD5 of a local file to find the matching mod and file.
 
-    Returns: JSON array of {mod: <mod info>, file_details: <file info>}.
+    Returns:
+        JSON array of {mod: <mod info>, file_details: <file info>}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -525,9 +539,10 @@ async def nexus_search_by_md5(
     },
 )
 async def nexus_get_tracked_mods() -> str:
-    """List the mods the authenticated account is tracking.
+    """List the mods the authenticated account is tracking [v1 - uses v1 REST quota].
 
-    Returns: JSON array of {mod_id, domain_name}.
+    Returns:
+        JSON array of {mod_id, domain_name}.
     """
     return await _call("GET", "/v1/user/tracked_mods.json")
 
@@ -546,9 +561,11 @@ async def nexus_track_mod(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID to track.", ge=1),
 ) -> str:
-    """Start tracking a mod for the authenticated account (get update notifications).
+    """Start tracking a mod for the authenticated account [v1 - uses v1 REST quota].
+    HTTP 200 means already tracking; 201 means newly tracked.
 
-    Returns: JSON {message: "..."}; HTTP 200 = already tracking, 201 = newly tracked.
+    Returns:
+        JSON {message: "..."}; HTTP 200 = already tracking, 201 = newly tracked.
     """
     if err := _check_domain(domain_name):
         return err
@@ -574,9 +591,10 @@ async def nexus_untrack_mod(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID to stop tracking.", ge=1),
 ) -> str:
-    """Stop tracking a mod for the authenticated account.
+    """Stop tracking a mod for the authenticated account [v1 - uses v1 REST quota].
 
-    Returns: JSON {message: "..."}.
+    Returns:
+        JSON {message: "..."}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -603,9 +621,11 @@ async def nexus_untrack_mod(
     },
 )
 async def nexus_get_endorsements() -> str:
-    """List the authenticated account's endorsement history.
+    """List the authenticated account's endorsement history [v1 - uses v1 REST quota].
 
-    Returns: JSON array of {mod_id, domain_name, date (epoch), version, status ('Undecided' | 'Abstained' | 'Endorsed')}.
+    Returns:
+        JSON array of {mod_id, domain_name, date (epoch), version,
+        status ('Undecided' | 'Abstained' | 'Endorsed')}.
     """
     return await _call("GET", "/v1/user/endorsements.json")
 
@@ -625,11 +645,11 @@ async def nexus_endorse_mod(
     mod_id: int = Field(..., description="Numeric mod ID to endorse.", ge=1),
     version: str = Field(..., description="Mod version being endorsed, e.g. '1.619.6'."),
 ) -> str:
-    """Endorse a mod on behalf of the authenticated account.
+    """Endorse a mod on behalf of the authenticated account [v1 - uses v1 REST quota].
+    Requires a prior download and a 15-minute cooldown after it (TOO_SOON_AFTER_DOWNLOAD otherwise).
 
-    Account must have downloaded the mod; Nexus enforces a 15-minute cooldown after download (TOO_SOON_AFTER_DOWNLOAD).
-
-    Returns: JSON {message: "Updated to: Endorsed", status: "Endorsed"}.
+    Returns:
+        JSON {message: "Updated to: Endorsed", status: "Endorsed"}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -655,9 +675,10 @@ async def nexus_abstain_endorsement(
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
     version: str = Field(..., description="Mod version to abstain from endorsing."),
 ) -> str:
-    """Withdraw or abstain from an endorsement for a mod.
+    """Withdraw or abstain from an endorsement for a mod [v1 - uses v1 REST quota].
 
-    Returns: JSON {message: ..., status: "Abstained"}.
+    Returns:
+        JSON {message: ..., status: "Abstained"}.
     """
     if err := _check_domain(domain_name):
         return err

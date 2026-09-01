@@ -2,7 +2,7 @@
 """Nexus Mods MCP server.
 
 Wraps the official Nexus Mods REST API v1 (https://api.nexusmods.com) and
-GraphQL API v2 (https://api.nexusmods.com/v2/graphql) as 135 MCP tools:
+GraphQL API v2 (https://api.nexusmods.com/v2/graphql) as 138 MCP tools:
 validate key, browse games, inspect mods/files, free-text search, get download
 links, download files (MD5+SHA256 verified), search by MD5, comment threads,
 collections lifecycle, endorsements, and user preference/mutation tools.
@@ -36,7 +36,7 @@ from pydantic.fields import FieldInfo
 API_BASE = "https://api.nexusmods.com"
 GRAPHQL_PATH = "/v2/graphql"
 APP_NAME = "nexus-mcp"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 __version__ = APP_VERSION
 
 RL_HEADERS = [
@@ -50,7 +50,7 @@ RL_HEADERS = [
 
 DOMAIN_DESC = "Nexus Mods game domain (lowercase URL slug), e.g. 'forzahorizon6', 'skyrimse'. NOT the display name."
 
-_DOMAIN_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+_DOMAIN_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 def _check_domain(domain_name: Any) -> str | None:
@@ -263,8 +263,6 @@ def _clear_cache() -> None:
 
 def _prune_cache() -> None:
     """Keep the cache bounded: drop expired entries, then oldest-first if still over cap."""
-    if len(_CACHE) < _CACHE_MAX_ENTRIES:
-        return
     now = time.monotonic()
     for key in [k for k, v in _CACHE.items() if v[0] <= now]:
         _CACHE.pop(key, None)
@@ -281,13 +279,28 @@ def _ttl_for(path: str) -> int:
         return 3600
     if "/user" in path:
         return 0  # personal state (validate/tracked/endorsements) must be fresh
+    if "download_link" in path:
+        return 0  # short-lived CDN links must never be cached
     if "/mods/" in path or "/files/" in path:
         return 300  # public mod/file data - Nexus itself caches these 5 minutes
     return 0
 
 
+def _sanitize_for_cache(obj: Any) -> Any:
+    """Recursively replace FieldInfo (unpassed Optional params) with None for stable cache keys."""
+    if isinstance(obj, FieldInfo):
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_cache(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_cache(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_sanitize_for_cache(v) for v in obj)
+    return obj
+
+
 def _cache_key(method: str, path: str, params: dict[str, Any] | None, data: dict[str, Any] | None) -> str:
-    return json.dumps([method, path, params or {}, data or {}], sort_keys=True)
+    return json.dumps([method, path, _sanitize_for_cache(params or {}), _sanitize_for_cache(data or {})], sort_keys=True)
 
 
 def _rl_snapshot(response: httpx.Response) -> dict[str, str]:
@@ -300,14 +313,11 @@ def _rl_snapshot(response: httpx.Response) -> dict[str, str]:
     return rl
 
 
-def _status_hint(status: int) -> str:
+def _status_hint(status: int, path: str = "") -> str:
     hints = {
-        400: "Bad request: 'key'/'expires' for download_link.json must come from a .nxm link.",
+        400: "Bad request: check parameter formats.",
         401: "Invalid/missing credentials. Check NEXUS_API_KEY or refresh OAuth.",
-        403: (
-            "Not permitted: pass 'key'/'expires' from a .nxm link for download_link.json,"
-            " unless premium (may omit them)."
-        ),
+        403: "Not permitted.",
         404: (
             "Not found. Check domain_name (lowercase slug, e.g. 'forzahorizon6')"
             " and mod_id/file_id."
@@ -315,7 +325,13 @@ def _status_hint(status: int) -> str:
         410: "Download link expired: request a fresh .nxm link from Nexus.",
         422: "Unprocessable request: check parameter formats.",
     }
-    return hints.get(status, "")
+    hint = hints.get(status, "")
+    if "download_link.json" in path and status in (400, 403):
+        hint = (
+            "For download_link.json the 'key'/'expires' query params must come from a"
+            " .nxm link (unless premium, which may omit them). " + hint
+        )
+    return hint
 
 
 async def _api(
@@ -346,11 +362,19 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
     """Parse a numeric Retry-After header; HTTP-date form and garbage return None."""
     value = response.headers.get("retry-after")
     if value is None:
+        value = response.headers.get("Retry-After")
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
         return None
     try:
-        return float(value)
+        wait = float(value)
     except ValueError:
         return None
+    if wait < 0:
+        return None
+    return wait
 
 
 async def _send(
@@ -398,7 +422,7 @@ async def _request(
         wait_note = f" Server asked to retry after {wait:g}s." if wait is not None else ""
         raise NexusApiError(
             f"Rate limit exceeded (quota or >30 rps).{wait_note} Quota left: "
-            f"{json.dumps(rl) if rl else 'unknown'}. Retry after reset."
+            f"{json.dumps(rl) if rl else 'unknown'}. Wait for the reset window before retrying."
         )
     if response.status_code >= 400:
         detail = ""
@@ -409,7 +433,7 @@ async def _request(
         except json.JSONDecodeError:
             pass
         raise NexusApiError(
-            f"API error {response.status_code}{detail}. {_status_hint(response.status_code)}".strip()
+            f"API error {response.status_code}{detail}. {_status_hint(response.status_code, path)}".strip()
         )
 
     try:
@@ -442,6 +466,35 @@ async def _call(
 
 GRAPHQL_TTL = 60  # GraphQL POSTs cached briefly - repeated identical queries within a session are cheap
 
+# User-specific GraphQL fields that must never be cached (stale personal state).
+# Mutations are already never cached; these are queries that return per-user data.
+_GRAPHQL_NO_CACHE_SUBSTRINGS: tuple[str, ...] = (
+    "preferences",  # site preferences
+    "userDonationPreferences",
+    "blockedTags",
+    "favouriteGames",
+    "ignoredUsers",
+    "currentWarnings",
+    "transactions",
+    "uploads",
+    "applications",  # user's API applications
+    "ageVerificationInfo",
+    "privateMessageUrl",
+    "optedInMods",
+    "userMonthly",  # userMonthlyReport / userMonthlyReportById / userMonthlySummary
+    "requestMediaUploadUrl",
+    "collectionRevisionUploadUrl",
+    "startAgeVerification",
+)
+
+
+def _graphql_ttl_for(query: str) -> int:
+    """GraphQL cache TTL. 0 = never cache (user data / presigned URLs)."""
+    for substr in _GRAPHQL_NO_CACHE_SUBSTRINGS:
+        if substr in query:
+            return 0
+    return GRAPHQL_TTL
+
 
 async def _graphql(query: str, variables: dict[str, Any] | None = None) -> tuple[Any, dict[str, str]]:
     """Execute a Nexus v2 GraphQL query (POST JSON); returns (data, rate-limit headers).
@@ -450,10 +503,18 @@ async def _graphql(query: str, variables: dict[str, Any] | None = None) -> tuple
     queries here do not consume the v1 quota.
 
     Mutations are never cached - a repeated toggle must actually hit the server.
+    User-specific queries (preferences, donation, etc.) are also never cached.
     """
-    body = {"query": query, "variables": variables or {}}
+    # Sanitize variables: replace FieldInfo sentinels (unpassed optionals) with None
+    variables = _sanitize_for_cache(variables or {})  # type: ignore[assignment]
+    body = {"query": query, "variables": variables}
     is_mutation = query.lstrip().startswith("mutation")
-    key = None if is_mutation else _cache_key("POST", GRAPHQL_PATH, None, body)
+    if is_mutation:
+        ttl = 0
+        key = None
+    else:
+        ttl = _graphql_ttl_for(query)
+        key = None if ttl == 0 else _cache_key("POST", GRAPHQL_PATH, None, body)
     hit = _CACHE.get(key) if key else None
     if hit is not None and hit[0] > time.monotonic():
         return hit[1], hit[2]
@@ -468,7 +529,21 @@ async def _graphql(query: str, variables: dict[str, Any] | None = None) -> tuple
 
     rl = _rl_snapshot(response)
     if response.status_code >= 400:
-        raise NexusApiError(f"GraphQL error {response.status_code}. {_status_hint(response.status_code)}".strip())
+        detail = ""
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                msg = body.get("message") or body.get("error")
+                if isinstance(msg, str) and msg:
+                    detail = f" API says: {msg}"
+                elif isinstance(body.get("errors"), (list, dict)):
+                    detail = f" API says: {json.dumps(body['errors'])}"
+        except json.JSONDecodeError:
+            pass
+        hint = _status_hint(response.status_code, GRAPHQL_PATH)
+        raise NexusApiError(
+            f"GraphQL error {response.status_code}{detail}. {hint}".strip()
+        )
     try:
         result = response.json()
     except json.JSONDecodeError:
@@ -482,7 +557,7 @@ async def _graphql(query: str, variables: dict[str, Any] | None = None) -> tuple
     data = result.get("data")
     if key:
         _prune_cache()
-        _CACHE[key] = (time.monotonic() + GRAPHQL_TTL, data, rl)
+        _CACHE[key] = (time.monotonic() + ttl, data, rl)
     return data, rl
 
 

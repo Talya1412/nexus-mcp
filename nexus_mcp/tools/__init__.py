@@ -9,4 +9,5 @@ from . import (  # noqa: F401
     v2_interactions,
     v2_misc,
     v2_search,
+    web_scrape,
 )

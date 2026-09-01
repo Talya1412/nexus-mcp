@@ -3,7 +3,7 @@ import asyncio
 
 import nexus_mcp
 
-EXPECTED_TOOLS = 135
+EXPECTED_TOOLS = 140
 
 
 def _tools():
@@ -51,3 +51,15 @@ def test_known_mutation_is_not_readonly():
     ann = by_name["nexus_endorse_mod"].annotations
     assert ann is not None
     assert ann.readOnlyHint is False
+
+
+def test_server_info_version_matches_package():
+    from nexus_mcp._core import APP_VERSION
+
+    mcp_version = nexus_mcp.mcp._mcp_server.version
+    assert mcp_version == nexus_mcp.__version__
+    assert mcp_version == APP_VERSION
+
+
+def test_server_website_url():
+    assert nexus_mcp.mcp._mcp_server.website_url == "https://github.com/Talya1412/nexus-mcp"

@@ -17,6 +17,55 @@ def install(handler):
     )
 
 
+class TestRequestSnapshots:
+    """Wire-level snapshots (#21): exact method, URL, body and identity headers."""
+
+    def test_rest_get_wire_snapshot(self):
+        seen = {}
+
+        def handler(request):
+            seen["method"] = request.method
+            seen["url"] = str(request.url)
+            seen["apikey"] = request.headers.get("apikey")
+            return httpx.Response(200, json={})
+
+        install(handler)
+        run(core._call("GET", "/v1/mods.json", params={"domain_name": "skyrim", "mod_id": 42}))
+        assert seen["method"] == "GET"
+        url = seen["url"]
+        assert url.startswith(core.API_BASE.rstrip("/") + "/v1/mods.json?")
+        assert "mod_id=42" in url
+        assert "domain_name=skyrim" in url
+        assert seen["apikey"] == "test-key-123"
+
+    def test_graphql_post_wire_snapshot(self):
+        seen = {}
+
+        def handler(request):
+            seen["method"] = request.method
+            seen["path"] = request.url.path
+            seen["content_type"] = request.headers.get("content-type")
+            seen["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"data": None, "errors": None})
+
+        install(handler)
+        run(core._graphql("query { mods { totalCount } }", {"x": 1}))
+        assert seen["method"] == "POST"
+        assert seen["path"] == core.GRAPHQL_PATH
+        assert seen["content_type"] == "application/json"
+        assert seen["body"] == {
+            "query": "query { mods { totalCount } }",
+            "variables": {"x": 1},
+        }
+
+    def test_get_client_identity_headers(self):
+        client = core._get_client()
+        assert client.headers["User-Agent"].startswith(f"{core.APP_NAME}/{core.APP_VERSION}")
+        assert client.headers["Application-Name"] == core.APP_NAME
+        assert client.headers["Application-Version"] == core.APP_VERSION
+        assert client.headers["Accept"] == "application/json"
+
+
 class TestRestPipeline:
     def test_success_and_ttl_cache(self):
         calls = {"n": 0}

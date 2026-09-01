@@ -12,6 +12,7 @@ from .._annotations import (
 )
 from .._core import (
     _gql_call,
+    _load_oauth_tokens,
 )
 from .._server import mcp
 
@@ -20,7 +21,7 @@ from .._server import mcp
 async def nexus_track_user(
     user_id: int = Field(..., description="Nexus Mods member ID to track for updates.", ge=1),
 ) -> str:
-    """Start tracking a user (get notifications about their new mods) via v2 GraphQL.
+    """Start tracking a user (get notified about their new mods) via v2. [v2 - no v1 quota] Changes only your own tracking list.
 
     Returns:
         JSON {trackUser: {success}} or an error string.
@@ -35,7 +36,7 @@ async def nexus_track_user(
 async def nexus_untrack_user(
     user_id: int = Field(..., description="Nexus Mods member ID to stop tracking.", ge=1),
 ) -> str:
-    """Stop tracking a user via v2 GraphQL.
+    """Stop tracking a user via v2. [v2 - no v1 quota] [destructive] Changes only your own tracking list.
 
     Returns:
         JSON {untrackUser: {success}} or an error string.
@@ -50,7 +51,7 @@ async def nexus_untrack_user(
 async def nexus_give_kudos(
     user_id: int = Field(..., description="Nexus Mods member ID to give kudos to.", ge=1),
 ) -> str:
-    """Give kudos to a user via v2 GraphQL.
+    """Give kudos to a user via v2. [v2 - no v1 quota]
 
     Returns:
         JSON {giveKudos: {success}} or an error string.
@@ -65,7 +66,7 @@ async def nexus_give_kudos(
 async def nexus_remove_kudos(
     user_id: int = Field(..., description="Nexus Mods member ID to remove kudos from.", ge=1),
 ) -> str:
-    """Remove previously given kudos from a user via v2 GraphQL.
+    """Remove previously given kudos from a user via v2. [v2 - no v1 quota]
 
     Returns:
         JSON {removeKudos: {success}} or an error string.
@@ -80,7 +81,7 @@ async def nexus_remove_kudos(
 async def nexus_add_favourite_game(
     game_id: int = Field(..., description="Game ID (from nexus_search_games / nexus_get_game 'id').", ge=1),
 ) -> str:
-    """Add a game to your favourites via v2 GraphQL.
+    """Add a game to your favourites via v2. [v2 - no v1 quota] Changes only your own favourites list.
 
     Returns:
         JSON {addFavouriteGame: {success}} or an error string.
@@ -95,7 +96,7 @@ async def nexus_add_favourite_game(
 async def nexus_remove_favourite_game(
     game_id: int = Field(..., description="Game ID to remove from favourites.", ge=1),
 ) -> str:
-    """Remove a game from your favourites via v2 GraphQL.
+    """Remove a game from your favourites via v2. [v2 - no v1 quota] Changes only your own favourites list.
 
     Returns:
         JSON {removeFavouriteGame: {success}} or an error string.
@@ -110,7 +111,7 @@ async def nexus_remove_favourite_game(
 async def nexus_like_comment(
     comment_id: int = Field(..., description="Comment ID to like.", ge=1),
 ) -> str:
-    """Like a comment via v2 GraphQL.
+    """Like a comment via v2. [v2 - no v1 quota] Undo with nexus_remove_comment_like.
 
     Returns:
         JSON {likeComment: {comment}} or an error string.
@@ -125,7 +126,7 @@ async def nexus_like_comment(
 async def nexus_remove_comment_like(
     comment_id: int = Field(..., description="Comment ID to remove your like from.", ge=1),
 ) -> str:
-    """Remove your like from a comment via v2 GraphQL.
+    """Remove your like from a comment via v2. [v2 - no v1 quota]
 
     Returns:
         JSON {removeCommentLike: {comment}} or an error string.
@@ -138,13 +139,11 @@ async def nexus_remove_comment_like(
 
 @mcp.tool(name="nexus_create_comment", annotations={**_MUTATING_ANNOTATIONS, "title": "Post a comment (v2)"})
 async def nexus_create_comment(
-    thread_id: int = Field(..., description="Comment thread ID to reply in.", ge=1),
+    thread_id: int = Field(..., description="Comment thread ID to post in (from mod page ?tab=posts).", ge=1),
     body: str = Field(..., description="Comment body text (plain text).", min_length=1),
     reply_to_id: int | None = Field(None, description="Comment ID to reply to; omit for a top-level comment.", ge=1),
 ) -> str:
-    """Post a comment in a thread via v2 GraphQL - top-level by default, or a nested reply when reply_to_id is given.
-
-    Find thread IDs on mod pages (?tab=posts); forum threads and mod posts have distinct thread IDs.
+    """Post a comment in a thread via v2 (top-level, or a reply when reply_to_id is set). [v2 - no v1 quota] Find thread IDs on mod pages (?tab=posts; forum and mod-post threads have distinct IDs.
 
     Returns:
         JSON {createComment: {comment: {id, body, ...}}} or an error string.
@@ -162,9 +161,7 @@ async def nexus_edit_comment(
     comment_id: int = Field(..., description="Comment ID to edit (must be your own comment).", ge=1),
     body: str = Field(..., description="New comment body text (plain text).", min_length=1),
 ) -> str:
-    """Edit the body of your own comment via v2 GraphQL.
-
-    Only the comment's author can edit it.
+    """Edit your own comment's body via v2. [v2 - no v1 quota] Only the comment's author can edit it.
 
     Returns:
         JSON {updateComment: {comment: {id, body, ...}}} or an error string.
@@ -179,9 +176,7 @@ async def nexus_edit_comment(
 async def nexus_discard_comment(
     comment_id: int = Field(..., description="Comment ID to discard (soft-delete).", ge=1),
 ) -> str:
-    """Discard (soft-delete) a comment via v2 GraphQL.
-
-    Only the author (or a moderator) can discard. Restore (nexus_restore_comment) needs OAuth Bearer; under apikey-only auth it is effectively one-way.
+    """Discard (soft-delete) a comment via v2. [v2 - no v1 quota] [destructive] Restoring needs OAuth Bearer auth, so with only an API key this is one-way (see nexus_restore_comment).
 
     Returns:
         JSON {discardComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
@@ -196,13 +191,13 @@ async def nexus_discard_comment(
 async def nexus_restore_comment(
     comment_id: int = Field(..., description="Comment ID to restore (undo discard).", ge=1),
 ) -> str:
-    """Restore a previously discarded comment via v2 GraphQL (undo for nexus_discard_comment).
-
-    Requires OAuth Bearer auth: Nexus denies restore under apikey-only auth, even for your own comments.
+    """Restore a previously discarded comment via v2. [v2 - no v1 quota] [OAuth required] Undo for nexus_discard_comment; Nexus denies restore under apikey-only auth even for your own comments.
 
     Returns:
         JSON {restoreComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
     """
+    if _load_oauth_tokens() is None:
+        return "Error: restoreComment requires an OAuth login - run nexus_oauth_login + nexus_oauth_exchange first."
     return await _gql_call(
         "mutation($id: ID!) { restoreComment(commentId: $id) { ... on RestoreCommentMutationPayload { comment { id isDiscarded discardedAt } } } }",
         {"id": str(comment_id)},

@@ -14,6 +14,7 @@ from .._core import (
     _MOD_SEARCH_FIELDS,
     _gql_call,
     _gql_page,
+    _load_oauth_tokens,
     _opt,
     _split_ids,
 )
@@ -27,7 +28,7 @@ from .._server import mcp
 async def nexus_get_age_verification_info(
     user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
-    """Get a user's age verification status (v2 GraphQL).
+    """Check a user's age verification status [v2 - no v1 quota]. Omit user_id to check the current user.
 
     Returns:
         JSON {verified, externalVerificationIds: [{createdAt, externalVerificationId}]}.
@@ -43,7 +44,7 @@ async def nexus_get_age_verification_info(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "List your API applications (v2)"},
 )
 async def nexus_get_api_applications() -> str:
-    """List the authenticated account's registered API applications (v2 GraphQL).
+    """List the API applications registered to your account, including API keys [v2 - no v1 quota]. Returns your account's own data only.
 
     Returns:
         JSON list of {active, id, key, name, slug, summary}.
@@ -58,7 +59,7 @@ async def nexus_get_api_applications() -> str:
 async def nexus_get_category_by_id(
     category_id: int = Field(..., description="Category ID.", ge=1),
 ) -> str:
-    """Get a single collection category by ID (v2 GraphQL).
+    """Get a collection category by its ID [v2 - no v1 quota].
 
     Returns:
         JSON {id, name, description, parentId, approved, createdAt, updatedAt}.
@@ -74,7 +75,7 @@ async def nexus_get_category_by_id(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "List collection-supported games (v2)"},
 )
 async def nexus_get_collection_games() -> str:
-    """List games that support collections (v2 GraphQL).
+    """List games that support collections [v2 - no v1 quota].
 
     Returns:
         JSON list of {id, name, domainName, modCount, collectionCount}.
@@ -89,10 +90,11 @@ async def nexus_get_collection_games() -> str:
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get your warnings/notices (v2)"},
 )
 async def nexus_get_current_warnings() -> str:
-    """Get the current user's unread moderation warnings and global notices (v2 GraphQL).
+    """Get your unread moderation warnings and global notices [v2 - no v1 quota].
 
     Returns:
-        JSON {unreadWarnings: [{id, category, date, isRead, link, publicReason, reason, postId, removedDate, removedReason}], unreadGlobalNotices: [{content, date}]}.
+        JSON {unreadWarnings: [{id, category, date, isRead, link, publicReason, reason,
+        postId, removedDate, removedReason}], unreadGlobalNotices: [{content, date}]}.
     """
     return await _gql_call(
         "query { currentWarnings { unreadWarnings { id category date isRead link publicReason reason postId removedDate removedReason staff { memberId name } user { memberId name } } unreadGlobalNotices { content date staff { memberId name } } } }"
@@ -106,7 +108,7 @@ async def nexus_get_current_warnings() -> str:
 async def nexus_get_external_video(
     url: str = Field(..., description="External video URL (YouTube etc.)."),
 ) -> str:
-    """Resolve an external video URL to embed metadata (v2 GraphQL).
+    """Resolve an external video URL to embed metadata [v2 - no v1 quota].
 
     Returns:
         JSON {id, title, platform, embedUrl, thumbnailUrl}.
@@ -124,7 +126,7 @@ async def nexus_get_external_video(
 async def nexus_get_file_hash(
     md5: str = Field(..., description="MD5 hash of the file."),
 ) -> str:
-    """Look up which mod file matches an MD5 hash (v2 GraphQL).
+    """Find which mod file matches a single MD5 hash [v2 - no v1 quota].
 
     Returns:
         JSON list of {md5, fileName, fileType, fileSize, gameId, modFileId, createdAt}.
@@ -142,7 +144,7 @@ async def nexus_get_file_hash(
 async def nexus_get_file_hashes(
     md5s: str = Field(..., description="Comma-separated MD5 hashes."),
 ) -> str:
-    """Look up which mod files match a batch of MD5 hashes (v2 GraphQL).
+    """Find which mod files match a batch of MD5 hashes [v2 - no v1 quota].
 
     Returns:
         JSON list of {md5, fileName, fileType, fileSize, gameId, modFileId, createdAt}.
@@ -158,7 +160,7 @@ async def nexus_get_file_hashes(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get game artwork URLs (v2)"},
 )
 async def nexus_get_game_artwork() -> str:
-    """Get the current game artwork schema URLs (v2 GraphQL).
+    """Get the game artwork schema URLs [v2 - no v1 quota].
 
     Returns:
         JSON {schemaV1: {tile, tileBlurred}, schemaV2: {hero, thumbnail, tile}}.
@@ -177,10 +179,11 @@ async def nexus_get_legacy_mods(
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
-    """Get mods by (gameId, modId) pairs via the legacy bridge (v2 GraphQL).
+    """Get mods by gameId:modId pairs via the legacy bridge [v2 - no v1 quota].
 
     Returns:
         JSON {totalCount, _returned, nodes: [mod objects]}.
+        Paginate with offset += _returned.
     """
     parsed: list[dict[str, Any]] = []
     for pair in _split_ids(ids):
@@ -211,7 +214,7 @@ async def nexus_get_tags_v2(
     include_global: bool | None = Field(default=None, description="Include global tags."),
     include_discarded: bool | None = Field(default=None, description="Include discarded tags."),
 ) -> str:
-    """List tags with optional filters (v2 GraphQL).
+    """List v2 tags, optionally filtered [v2 - no v1 quota].
 
     Returns:
         JSON list of {id, name, adult, global, taggablesCount, category, games}.
@@ -227,7 +230,7 @@ async def nexus_get_tags_v2(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "List tag categories (v2)"},
 )
 async def nexus_get_tag_categories() -> str:
-    """List all tag categories with their tags (v2 GraphQL).
+    """List all tag categories with their tags [v2 - no v1 quota].
 
     Returns:
         JSON list of {id, name, tags: [{id, name, adult}]}.
@@ -244,7 +247,7 @@ async def nexus_get_tag_categories() -> str:
 async def nexus_get_tag_by_id(
     tag_id: int = Field(..., description="Tag ID.", ge=1),
 ) -> str:
-    """Get a single tag by ID (v2 GraphQL).
+    """Get a single tag by its ID [v2 - no v1 quota].
 
     Returns:
         JSON {id, name, adult, global, taggablesCount, category, games}.
@@ -262,7 +265,7 @@ async def nexus_get_tag_by_id(
 async def nexus_get_tag_category_by_id(
     category_id: int = Field(..., description="Tag category ID.", ge=1),
 ) -> str:
-    """Get a single tag category by ID (v2 GraphQL).
+    """Get a single tag category by its ID [v2 - no v1 quota].
 
     Returns:
         JSON {id, name, tags: [{id, name, adult}]}.
@@ -283,18 +286,24 @@ async def nexus_search_media(
     game_name: str | None = Field(default=None, description="Filter by game name."),
     owner: str | None = Field(default=None, description="Filter by owner."),
     media_type: Literal["image", "video"] | None = Field(default=None, description="Filter by media type."),
-    sort: Literal["newest", "oldest", "rating", "views", "random"] | None = Field(default=None, description="Sort order."),
-    random_seed: int | None = Field(default=None, description="Seed for random sort."),
+    sort: Literal["newest", "oldest", "rating", "views", "random"] | None = Field(default=None, description="Sort order: newest, oldest, rating, views, or random."),
+    random_seed: int | None = Field(default=None, description="Seed for random sort (used only when sort=random)."),
     view_user_blocked_content: bool | None = Field(default=None, description="Include content from blocked users."),
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
-    """Search site-wide media (images/videos) via v2 GraphQL.
+    """Search site-wide media (images, supporter images, videos) [v2 - no v1 quota]. This endpoint can return server-side errors; retry on failure.
 
-    NOTE: server-side flaky - intermittently fails with GraphQL "A name ... was not found" errors regardless of filters; retries often succeed. adultContent filter removed upstream (errors for both True/False).
+    NOTE: this endpoint is SERVER-SIDE FLAKY - it intermittently fails
+    with GraphQL "A name ... was not found" errors regardless of filter
+    combination. Identical calls often succeed on retry; just retry.
+    (An adultContent filter was deliberately removed: that filter
+    consistently errors server-side for both True and False.)
 
     Returns:
-        JSON {totalCount, _returned, nodes: [...]} union (Image, SupporterImage, Video) via __typename.
+        JSON {totalCount, _returned, nodes: [...]}. Nodes are a union (Image,
+        SupporterImage, Video) discriminated by __typename.
+        Paginate with offset += _returned.
     """
     flt: dict[str, Any] = {}
     if _opt(general_search) is not None:
@@ -355,7 +364,7 @@ async def nexus_search_media(
 async def nexus_get_opted_in_mods(
     account_id: int = Field(..., description="Account ID.", ge=1),
 ) -> str:
-    """List a user's mods that opted into Donation Points (v2 GraphQL).
+    """List a user's mods that opted into Donation Points [v2 - no v1 quota].
 
     Returns:
         JSON {count, userId, user, entries: [{id, gameId, modId, uploaderId, ratio, createdAt}]}.
@@ -371,7 +380,7 @@ async def nexus_get_opted_in_mods(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get your preferences (v2)"},
 )
 async def nexus_get_preferences() -> str:
-    """Get the current user's site preferences (v2 GraphQL).
+    """Get your site preferences (adult content, tabs, sorting, download location) [v2 - no v1 quota].
 
     Returns:
         JSON with adult, default tabs/sort/search, download location, reminders,
@@ -389,7 +398,7 @@ async def nexus_get_preferences() -> str:
 async def nexus_get_private_message_url(
     message_id: int = Field(..., description="Private message ID.", ge=1),
 ) -> str:
-    """Get the web URL for one of your private messages (v2 GraphQL).
+    """Get the web URL for one of your private messages [v2 - no v1 quota].
 
     Returns:
         JSON string URL or an error string.
@@ -413,13 +422,14 @@ async def nexus_get_transactions(
     bank_id: int | None = Field(default=None, description="Filter by bank ID."),
     search: str | None = Field(default=None, description="Search string."),
 ) -> str:
-    """Get Donation Points transactions for the current user (v2 GraphQL).
-
-    OAuth required (nexus_oauth_login + nexus_oauth_exchange); apikey auth hides data ("hidden due to permissions") — API-side, not a tool failure.
+    """Get your Donation Points transactions [v2 - no v1 quota] [OAuth required]. Nexus hides the data under API-key auth; you must authenticate via nexus_oauth_login + nexus_oauth_exchange, or the query returns a permission error.
 
     Returns:
-        JSON {totalCount, filteredCount, transactions: [{id, type, label, amount, createdAt, creditorEntity, debitorEntity}]}.
+        JSON {totalCount, filteredCount, transactions: [{id, type, label, amount,
+        createdAt, creditorEntity, debitorEntity}]}.
     """
+    if _load_oauth_tokens() is None:
+        return "Error: transactions requires an OAuth login - run nexus_oauth_login + nexus_oauth_exchange first."
     return await _gql_call(
         "query($s: Int, $p: Int, $od: String, $oc: String, $a: Int, $b: Int, $q: String) { transactions(start: $s, perPage: $p, orderDir: $od, orderColumn: $oc, accountId: $a, bankId: $b, search: $q) { totalCount filteredCount transactions { id type label amount createdAt creditorEntity { id label type } debitorEntity { id label type } } } }",
         {"s": _opt(start), "p": _opt(per_page), "od": _opt(order_dir), "oc": _opt(order_column),
@@ -445,10 +455,11 @@ async def nexus_get_uploads(
     file_id: int | None = Field(default=None, description="Filter by file ID."),
     mod_id: int | None = Field(default=None, description="Filter by mod ID."),
 ) -> str:
-    """List mod file uploads with scan status (v2 GraphQL).
+    """List mod file uploads with scan status [v2 - no v1 quota].
 
     Returns:
-        JSON {totalCount, filteredCount, uploads: [{id, status, uploadType, md5, sha256, virusTotalStatus, ...}]}.
+        JSON {totalCount, filteredCount, uploads: [{id, status, uploadType, md5,
+        sha256, virusTotalStatus, ...}]}.
     """
     return await _gql_call(
         "query($s: Int!, $p: Int!, $oc: String!, $od: String!, $id: String, $q: String, $f: String, $ut: String, $g: Int, $u: Int, $fi: Int, $m: Int) { uploads(start: $s, perPage: $p, orderColumn: $oc, orderDir: $od, id: $id, search: $q, filter: $f, uploadType: $ut, gameId: $g, userId: $u, fileId: $fi, modId: $m) { totalCount filteredCount uploads { id status uploadType createdAt updatedAt tempFileName s3Url s3UploadComplete md5 sha256 sizeBytes fileId modId claimed chunksCurrent chunksTotal internalVirusScanStatus virusTotalStatus virusTotalPositives virusTotalUrl lastError processingEngine } } }",
@@ -463,10 +474,11 @@ async def nexus_get_uploads(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Get DP donation preferences (v2)"},
 )
 async def nexus_get_user_donation_preferences() -> str:
-    """Get the current user's Donation Points donation preferences (v2 GraphQL).
+    """Get your Donation Points donation preferences [v2 - no v1 quota].
 
     Returns:
-        JSON {donateStraight, donateProfile, donateAuthorpremium, donateOwnpremium, donatePremiumMax, paypal}. Edit with nexus_update_user_donation_preferences.
+        JSON {donateStraight, donateProfile, donateAuthorpremium, donateOwnpremium,
+        donatePremiumMax, paypal}. Edit with nexus_update_user_donation_preferences.
     """
     return await _gql_call(
         "query { userDonationPreferences { id donateStraight donateProfile donateAuthorpremium donateOwnpremium donatePremiumMax paypal } }"
@@ -481,12 +493,11 @@ async def nexus_get_user_monthly_report_by_id(
     account_id: int = Field(..., description="Account ID.", ge=1),
     report_id: int = Field(..., description="Report ID (from nexus_get_user_monthly_summary entries... use report lookup).", ge=1),
 ) -> str:
-    """Get one monthly Donation Points report by report ID (v2 GraphQL).
-
-    NOTE: hidden for privacy-restricted accounts ("hidden due to permissions") — API-side, not a tool failure.
+    """Get one monthly Donation Points report by report ID [v2 - no v1 quota]. Privacy-restricted accounts get a "hidden due to permissions" error - an API-side restriction, not a tool failure.
 
     Returns:
-        JSON {userId, entries: [{reportId, year, month, value, status, ratio, authorId, authorValue, gameId, modId, modCount, modValue, authorCount}]}.
+        JSON {userId, entries: [{reportId, year, month, value, status, ratio,
+        authorId, authorValue, gameId, modId, modCount, modValue, authorCount}]}.
     """
     return await _gql_call(
         "query($a: Int!, $r: Int!) { userMonthlyReportById(accountId: $a, reportId: $r) { userId entries { reportId year month value status ratio authorId authorValue gameId modId modCount modValue authorCount } } }",
@@ -502,7 +513,7 @@ async def nexus_request_media_upload_url(
     filename: str | None = Field(default=None, description="File name including extension."),
     mime_type: str | None = Field(default=None, description="MIME type."),
 ) -> str:
-    """Request a presigned URL for uploading media (v2 GraphQL).
+    """Request a presigned URL for uploading media [v2 - no v1 quota]. Upload the file to the returned url, then reference the uuid in your media mutations.
 
     Returns:
         JSON {url, uuid}. Upload the file to url, then reference the uuid.
@@ -518,7 +529,7 @@ async def nexus_request_media_upload_url(
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "Request revision upload URL (v2)"},
 )
 async def nexus_get_collection_revision_upload_url() -> str:
-    """Request a presigned URL for uploading a collection revision bundle (v2 GraphQL).
+    """Request a presigned URL for uploading a collection revision bundle [v2 - no v1 quota].
 
     Returns:
         JSON {url, uuid}.
@@ -531,9 +542,7 @@ async def nexus_get_collection_revision_upload_url() -> str:
     annotations={**_MUTATING_ANNOTATIONS, "title": "Start age verification flow (v2)"},
 )
 async def nexus_start_age_verification_flow() -> str:
-    """Start the age verification flow for the current user (v2 GraphQL).
-
-    This is an ACTION, not a read: it initiates a verification session.
+    """Start the age verification flow for your account [v2 - no v1 quota]. This is an ACTION, not a read: it opens a verification session you complete in the browser.
 
     Returns:
         JSON {success, message, verificationResult: {id, url}} - open url to verify.
@@ -548,9 +557,7 @@ async def nexus_start_age_verification_flow() -> str:
     annotations={**_MUTATING_ANNOTATIONS, "title": "Start age verification appeal (v2)"},
 )
 async def nexus_start_age_verification_appeal_flow() -> str:
-    """Start the age verification appeal flow for the current user (v2 GraphQL).
-
-    This is an ACTION, not a read: it initiates an appeal session.
+    """Start the age verification appeal flow for your account [v2 - no v1 quota]. This is an ACTION, not a read: it opens an appeal session you complete in the browser.
 
     Returns:
         JSON {success, message, verificationResult: {id, url}} - open url to continue.

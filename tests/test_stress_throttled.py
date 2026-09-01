@@ -14,9 +14,8 @@ Metrics printed: cache hit rate, retry behavior, concurrency safety.
 from __future__ import annotations
 
 import asyncio
-import json
-import time
 import statistics
+import time
 
 import httpx
 import pytest
@@ -80,7 +79,7 @@ class TestRetryAfterMaxWait:
                 return httpx.Response(429, headers={"Retry-After": "0"}, json={})
             return httpx.Response(200, json={"ok": True})
         install(h)
-        payload, _ = run(core._api("GET", "/v1/z.json"))
+        _payload, _ = run(core._api("GET", "/v1/z.json"))
         assert calls["n"] == 2
         assert slept == [0.0]
 
@@ -258,9 +257,7 @@ class TestConcurrentThrottling:
 
     def test_10_concurrent_mock_under_rate_limit(self):
         # mock with tiny delay to simulate network
-        concurrent = {"cur": 0, "peak": 0}
         timestamps: list[float] = []
-        lock = {"v": 0}  # mock transport is sync, so we use simple counters
 
         def h(req):
             # track concurrency via monotonic window

@@ -419,7 +419,7 @@ async def _request(
         wait_note = f" Server asked to retry after {wait:g}s." if wait is not None else ""
         raise NexusApiError(
             f"Rate limit exceeded (quota or >30 rps).{wait_note} Quota left: "
-            f"{json.dumps(rl) if rl else 'unknown'}. Retry after reset."
+            f"{json.dumps(rl) if rl else 'unknown'}. Wait for the reset window before retrying."
         )
     if response.status_code >= 400:
         detail = ""

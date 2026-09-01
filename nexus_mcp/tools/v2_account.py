@@ -14,6 +14,7 @@ from .._core import (
     _MOD_SEARCH_FIELDS,
     _gql_call,
     _gql_page,
+    _load_oauth_tokens,
     _opt,
     _split_ids,
 )
@@ -427,6 +428,8 @@ async def nexus_get_transactions(
         JSON {totalCount, filteredCount, transactions: [{id, type, label, amount,
         createdAt, creditorEntity, debitorEntity}]}.
     """
+    if _load_oauth_tokens() is None:
+        return "Error: transactions requires an OAuth login - run nexus_oauth_login + nexus_oauth_exchange first."
     return await _gql_call(
         "query($s: Int, $p: Int, $od: String, $oc: String, $a: Int, $b: Int, $q: String) { transactions(start: $s, perPage: $p, orderDir: $od, orderColumn: $oc, accountId: $a, bankId: $b, search: $q) { totalCount filteredCount transactions { id type label amount createdAt creditorEntity { id label type } debitorEntity { id label type } } } }",
         {"s": _opt(start), "p": _opt(per_page), "od": _opt(order_dir), "oc": _opt(order_column),

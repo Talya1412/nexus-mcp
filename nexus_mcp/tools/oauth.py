@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import Field
 
+from .. import _core as core
 from .._annotations import (
     _IDEMPOTENT_MUTATION_ANNOTATIONS,
     _MUTATING_ANNOTATIONS,
@@ -24,7 +25,6 @@ from .._core import (
     _load_oauth_tokens,
     _oauth_client_id,
     _oauth_client_secret,
-    _oauth_pending,
     _oauth_redirect_uri,
     _oauth_refresh,
     _oauth_token_file,
@@ -58,7 +58,6 @@ async def nexus_oauth_login(
     Returns:
         JSON {authorize_url, redirect_uri, state, instructions}.
     """
-    global _oauth_pending
     client_id = _oauth_client_id()
     if not client_id:
         return f"Error: NEXUS_OAUTH_CLIENT_ID is not set. {_OAUTH_REGISTER_NOTE}"
@@ -67,7 +66,7 @@ async def nexus_oauth_login(
     ru = redirect_uri or _oauth_redirect_uri()
     verifier, challenge = _pkce_pair()
     state = secrets.token_urlsafe(16)
-    _oauth_pending = {"verifier": verifier, "state": state, "redirect_uri": ru, "scope": scope}
+    core._oauth_pending = {"verifier": verifier, "state": state, "redirect_uri": ru, "scope": scope}
     url = OAUTH_AUTHORIZE_URL + "?" + urllib.parse.urlencode({
         "client_id": client_id,
         "response_type": "code",
@@ -105,8 +104,7 @@ async def nexus_oauth_exchange(
     Returns:
         JSON account summary from nexus_validate_key, or an error string.
     """
-    global _oauth_pending
-    pending = _oauth_pending
+    pending = core._oauth_pending
     if not pending:
         return "Error: no pending login. Run nexus_oauth_login first."
     if not isinstance(state, str):
@@ -132,7 +130,7 @@ async def nexus_oauth_exchange(
         return f"Error: {exc}"
     _save_oauth_tokens(_tokens_from_reply(reply))
     _clear_cache()  # cached responses made under the previous (or absent) identity must not leak across accounts
-    _oauth_pending = None
+    core._oauth_pending = None
     return await nexus_validate_key()
 
 
@@ -151,7 +149,7 @@ async def nexus_oauth_status() -> str:
         "client_id_configured": bool(_oauth_client_id()),
         "client_secret_configured": bool(_oauth_client_secret()),
         "redirect_uri": _oauth_redirect_uri(),
-        "pending_login": _oauth_pending is not None,
+        "pending_login": core._oauth_pending is not None,
         "logged_in": False,
         "token_file": str(_oauth_token_file()),
     }
@@ -201,10 +199,9 @@ async def nexus_oauth_logout() -> str:
     Returns:
         JSON {logged_out: true}.
     """
-    global _oauth_pending
     _clear_oauth_tokens()
     _clear_cache()
-    _oauth_pending = None
+    core._oauth_pending = None
     return json.dumps({"logged_out": True})
 
 

@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/nexus-mods-mcp)](https://pypi.org/project/nexus-mods-mcp/)
 [![MCP](https://img.shields.io/badge/protocol-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
 
-**138 MCP tools** for [Nexus Mods](https://www.nexusmods.com) — wraps the official
+**140 MCP tools** for [Nexus Mods](https://www.nexusmods.com) — wraps the official
 **REST API v1** and **GraphQL API v2** as a Model Context Protocol server (Python +
 FastMCP, stdio transport). Lets any MCP client (Claude Desktop, opencode, Cursor, ...)
 browse games, inspect mods and files, run free-text searches, download mod files with
@@ -14,7 +14,7 @@ checksum verification, manage endorsements, comments, collections, and user pref
 
 ## Highlights
 
-- **Full API coverage** — 72 read tools + 66 mutations across v1 REST and v2 GraphQL.
+- **Full API coverage** — 74 read tools + 66 mutations across v1 REST and v2 GraphQL.
   Includes things v1 doesn't offer: free-text mod search, batch mod lookups, comment
   threads, collection lifecycle, and quota-free GraphQL reads.
 - **Built-in TTL cache** — repeated identical GETs within a session don't consume quota
@@ -22,8 +22,8 @@ checksum verification, manage endorsements, comments, collections, and user pref
   never cached.
 - **Dual authentication** — personal API key out of the box; optional OAuth2 (PKCE S256)
   with auto-refresh for user-context mutations that API keys cannot perform.
-- **Safe downloads** — `nexus_download_mod_file` streams from the CDN to disk with MD5 +
-  SHA-256 verification and a configurable size cap.
+- **Safe downloads** — `nexus_download_mod_file` streams from the CDN to disk, verifies
+  MD5 + SHA-256 checksums against the expected hashes, and enforces a configurable size cap.
 - **Rate-limit transparency** — every v1 response carries an `_rl` snapshot of Nexus'
   hourly/daily limit headers.
 
@@ -189,6 +189,7 @@ env = { "NEXUS_API_KEY" = "<your-key>" }
 | `NEXUS_OAUTH_CLIENT_SECRET` | no | Only for non-public OAuth apps |
 | `NEXUS_OAUTH_REDIRECT_URI` | no | Defaults to `http://localhost/callback` |
 | `NEXUS_OAUTH_TOKEN_FILE` | no | Token store path, defaults to `~/.nexus-mcp/oauth-tokens.json` |
+| `NEXUS_MCP_TOOLS` | no | Tool profile: `all` (default), `read` (74 read-only tools only), or `rw` (all but the 12 destructive tools) |
 
 ## Authentication
 
@@ -234,7 +235,7 @@ v1 REST and v2 GraphQL.
 | `nexus_get_updated_mods` | Mods with activity in the last `1d`/`1w`/`1m` |
 | `nexus_get_mod_files` / `nexus_get_file_info` | Mod file list (category filter) / one file's details (MD5, size, version) |
 | `nexus_get_download_link` | Short-lived CDN download URL (non-premium needs `key`+`expires` from a `.nxm` link) |
-| `nexus_download_mod_file` | Stream a file to disk (MD5+SHA-256 verified, `max_bytes` cap) |
+| `nexus_download_mod_file` | Stream a file to disk (MD5+SHA-256 verification, `max_bytes` cap) |
 | `nexus_search_by_md5` | Identify a mod/file from an MD5 hash |
 | `nexus_get_tracked_mods` / `nexus_track_mod` / `nexus_untrack_mod` | Manage tracked mods |
 | `nexus_get_endorsements` / `nexus_endorse_mod` / `nexus_abstain_endorsement` | Manage endorsements |

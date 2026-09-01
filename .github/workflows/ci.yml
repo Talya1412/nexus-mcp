@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 3 * * *"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -80,7 +82,7 @@ jobs:
           python -c "
           import asyncio, nexus_mcp
           tools = asyncio.run(nexus_mcp.mcp.list_tools())
-          assert len(tools) == 138, f'expected 138 tools, got {len(tools)}'
+          assert len(tools) == 140, f'expected 140 tools, got {len(tools)}'
           assert len({t.name for t in tools}) == len(tools), 'duplicate tool names'
           assert all(t.description for t in tools), 'tool with empty description'
           print(f'wheel OK: {len(tools)} tools, v{nexus_mcp.__version__}')
@@ -94,7 +96,7 @@ jobs:
 
   live-smoke:
     needs: [lint, test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +114,7 @@ jobs:
           KEY: ${{ secrets.NEXUS_API_KEY }}
         run: echo "run=$([ -n "$KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-      - name: Live validate-key call (rate-limit exempt endpoint)
+      - name: Live validate-key, REST GET and v2 search (rate-limit aware)
         if: steps.gate.outputs.run == 'true'
         env:
           NEXUS_API_KEY: ${{ secrets.NEXUS_API_KEY }}
@@ -120,8 +122,22 @@ jobs:
           python -c "
           import asyncio, json
           from nexus_mcp import _core
-          out = asyncio.run(_core._call('GET', '/v1/users/validate.json'))
-          data = json.loads(out)
-          assert 'user_id' in data, f'live smoke failed: {out[:300]}'
-          print(f'live smoke OK: user_id={data[\"user_id\"]}')
+
+          async def check():
+              v = await _core._api('GET', '/v1/users/validate.json')
+              assert 'user_id' in v[0], f'live validate failed: {v[0]}'
+              print(f'validate OK: user_id={v[0][\"user_id\"]}')
+              g = await _core._api('GET', '/v1/games.json')
+              assert isinstance(g[0], list) and g[0], f'live games failed: {str(g[0])[:300]}'
+              print(f'games OK: {len(g[0])} games, rl={g[1]}')
+              s, _ = await _core._graphql(
+                  'query($f: ModsFilter, $c: Int) { mods(filter: $f, count: $c) { totalCount nodes { modId } } }',
+                  {'f': {'name': [{'value': 'skyrim', 'op': 'WILDCARD'}]}, 'c': 3},
+              )
+              assert 'totalCount' in s, f'live v2 search failed: {s}'
+              print(f'v2 search OK: total={s[\"totalCount\"]}')
+              return True
+
+          assert asyncio.run(check())
+          print('live smoke OK')
           "

@@ -335,7 +335,9 @@ async def nexus_graphql_query(
     variables: str = Field(default="{}", description="JSON object string with query variables, e.g. '{\"term\": \"sky\"}'."),
 ) -> str:
     """Run a raw query against the Nexus v2 GraphQL API [via v2] [v2 - no v1 quota].
-    Introspect types with nexus_graphql_introspect first; most mutations require OAuth scopes this server lacks and fail cleanly - use for read-only queries.
+    Introspect types with nexus_graphql_introspect first; mutations are sent
+    verbatim too - user-scoped mutations may fail cleanly if the OAuth scopes
+    this server holds do not cover them.
 
     Returns:
         The raw GraphQL 'data' payload as JSON, or 'Error: ...' with the

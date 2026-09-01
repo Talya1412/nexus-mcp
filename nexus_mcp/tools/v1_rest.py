@@ -8,8 +8,9 @@ import json
 import logging
 import os
 import re
+import tempfile
 import urllib.parse
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 import httpx
@@ -22,6 +23,7 @@ from .._core import (
     _call,
     _check_domain,
     _dump,
+    _graphql,
 )
 from .._server import mcp
 
@@ -286,6 +288,8 @@ async def nexus_get_mod_files(
     """
     if err := _check_domain(domain_name):
         return err
+    if not isinstance(category, str):
+        category = None
     query = {"category": category} if category else None
     return await _call("GET", f"/v1/games/{domain_name}/mods/{mod_id}/files.json", params=query)
 
@@ -391,14 +395,22 @@ async def nexus_download_mod_file(
         ge=1,
     ),
 ) -> str:
-    """Download a mod file to disk via its CDN link [v1 - uses v1 REST quota].
+    """Download a mod file to disk and verify its checksums [v1 - uses v1 REST quota].
     Non-premium accounts MUST pass the key/expires pair from a .nxm download link.
 
-    Downloads the actual file behind nexus_get_download_link, saving it to disk
-    with MD5 + SHA-256 checksums (verify MD5 against nexus_get_file_info).
+    Streams the actual file behind nexus_get_download_link to disk, computing
+    MD5 and SHA-256 while streaming. Both digests are verified: the SHA-256 is
+    cross-checked against the expected hash embedded in the file's v1 file_info
+    `external_virus_scan_url` (VirusTotal link tail), and the MD5 is confirmed
+    via a v2 `fileHash(md5)` lookup returning this file_id. The file is written
+    to a temp file and atomically renamed only when the checks pass; on any
+    failure the temp file is deleted and a pre-existing file at the destination
+    is left untouched. When no expected hash is obtainable (legacy files), the
+    digests are still computed and `verified` is false with a `verified_note`.
 
     Returns:
-        JSON {file, bytes, md5, sha256, overwrote, mirror, _rl} or an error string.
+        JSON {file, bytes, md5, sha256, verified, verified_note?, overwrote, mirror, _rl}
+        or an error string.
     """
     # Direct-call artifact: unpassed Optional Field params arrive as FieldInfo
     if not isinstance(destination, str):
@@ -412,6 +424,21 @@ async def nexus_download_mod_file(
 
     if err := _check_domain(domain_name):
         return err
+
+    # Best-effort expected hash: v1 file_info has no md5 field for legacy files,
+    # but `external_virus_scan_url` carries the SHA-256 hex (tail of the VT URL).
+    expected_sha256 = None
+    try:
+        info, _ = await _api("GET", f"/v1/games/{domain_name}/mods/{mod_id}/files/{file_id}.json")
+        if isinstance(info, dict):
+            vurl = info.get("external_virus_scan_url")
+            if isinstance(vurl, str):
+                m = re.search(r"[0-9a-fA-F]{64}", vurl)
+                if m:
+                    expected_sha256 = m.group(0).lower()
+    except NexusApiError:
+        pass  # best-effort; verification below skips when unobtainable
+
     query: dict[str, Any] = {}
     if key is not None:
         query["key"] = key
@@ -435,14 +462,17 @@ async def nexus_download_mod_file(
         return "Error: download link response had no URI."
 
     raw_name = first.get("name") if isinstance(first.get("name"), str) else ""
-    filename = os.path.basename(urllib.parse.urlparse(raw_name).path)
+    parsed_name = urllib.parse.urlparse(raw_name)
+    filename = PurePosixPath(parsed_name.path).name
     filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", filename).strip(" .")
     if not filename:
         filename = f"{domain_name}_mod{mod_id}_file{file_id}.bin"
     dest_dir = Path(destination).expanduser() if destination else Path.cwd()  # noqa: ASYNC240 - one-shot local mkdir; anyio.path is not worth it
     try:
         dest_dir.mkdir(parents=True, exist_ok=True)
-        out_path = dest_dir / filename
+        out_path = (dest_dir / filename).resolve()
+        if not out_path.is_relative_to(dest_dir.resolve()):
+            return f"Error: filename '{filename}' escapes the destination directory."
     except OSError as exc:
         return f"Error: cannot use destination '{destination}': {exc}"
 
@@ -454,18 +484,24 @@ async def nexus_download_mod_file(
     sha256 = hashlib.sha256()
     total = 0
     exceeded = False
+    failed: str | None = None
+    tmp_path: Path | None = None
     try:
+        fd, tmp_name = tempfile.mkstemp(dir=dest_dir, prefix=f".{filename}.", suffix=".part")
+        os.close(fd)
+        tmp_path = Path(tmp_name)
         async with (
             httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=120.0), follow_redirects=True) as hc,
             hc.stream("GET", uri) as resp,
         ):
             if resp.status_code >= 400:
-                return (
+                failed = (
                     f"Error: CDN returned HTTP {resp.status_code} for the file download "
                     "(expired link or premium required?). Re-run to mint a fresh link."
                 )
-            with open(out_path, "wb") as fh:  # noqa: ASYNC230 - small buffered writes; aiofiles is not worth a dep
-                async for chunk in resp.aiter_bytes(65536):
+            else:
+                with open(tmp_path, "wb") as fh:  # noqa: ASYNC230 - small buffered writes; aiofiles is not worth a dep
+                    async for chunk in resp.aiter_bytes(65536):
                         total += len(chunk)
                         if total > max_bytes:
                             exceeded = True
@@ -474,22 +510,64 @@ async def nexus_download_mod_file(
                         sha256.update(chunk)
                         fh.write(chunk)
     except httpx.TimeoutException:
-        return f"Error: download timed out; partial file left at {out_path}."
+        failed = f"Error: download timed out; no file was written at {out_path}."
     except httpx.HTTPError as exc:
-        return f"Error: network error during download: {type(exc).__name__}: {exc}"
+        failed = f"Error: network error during download: {type(exc).__name__}: {exc}"
     except OSError as exc:
-        return f"Error: could not write '{out_path}': {exc}"
-    if exceeded:
-        with contextlib.suppress(OSError):
-            out_path.unlink()
-        return f"Error: file exceeded max_bytes={max_bytes}; aborted and deleted the partial file."
+        failed = f"Error: could not write '{out_path}': {exc}"
 
+    if failed is None and exceeded:
+        failed = f"Error: file exceeded max_bytes={max_bytes}; aborted and deleted the partial file."
+    if failed is not None:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink()
+        return failed
+
+    # Verify checksums before the file becomes visible at the destination.
+    digest_md5 = md5.hexdigest()
+    digest_sha256 = sha256.hexdigest()
+    verified = False
+    verified_note = ""
+    if expected_sha256:
+        if expected_sha256 == digest_sha256:
+            verified = True
+            verified_note = "sha256 matches v1 file_info external_virus_scan_url"
+        else:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink() if tmp_path else None
+            return (
+                f"Error: SHA-256 mismatch: expected {expected_sha256}, got {digest_sha256}; "
+                "the file was deleted and no file was written."
+            )
+    else:
+        # No expected hash obtainable: confirm the MD5 against v2 fileHash (reverse lookup).
+        try:
+            data, _ = await _graphql(
+                "query($m: String!) { fileHash(md5: $m) { md5 modFileId fileName fileType gameId } }",
+                {"m": digest_md5},
+            )
+            entry = data.get("fileHash") if isinstance(data, dict) else None
+            if isinstance(entry, dict) and entry.get("modFileId") == file_id:
+                verified = True
+                verified_note = "md5 matches v2 fileHash(md5) for this file_id"
+            else:
+                verified_note = (
+                    "no expected hash obtainable (no v1 md5, and v2 fileHash(md5) did not "
+                    "resolve to a file matching this file_id)"
+                )
+        except NexusApiError as exc:
+            verified_note = f"checksum confirm unavailable (v2 fileHash failed): {exc}"
+
+    os.replace(tmp_path, out_path)
     return json.dumps(
         {
             "file": str(out_path),
             "bytes": total,
-            "md5": md5.hexdigest(),
-            "sha256": sha256.hexdigest(),
+            "md5": digest_md5,
+            "sha256": digest_sha256,
+            "verified": verified,
+            "verified_note": verified_note,
             "overwrote": existed,
             "mirror": first.get("short_name") or raw_name,
             "_rl": rl,

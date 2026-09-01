@@ -2,6 +2,8 @@
 
 from mcp.server.fastmcp import FastMCP
 
+from ._core import APP_VERSION
+
 mcp = FastMCP(
     "nexus_mcp",
     instructions=(
@@ -26,4 +28,7 @@ mcp = FastMCP(
         "reads public nexusmods.com pages via plain HTTPS - no API key, no quota, and only "
         "https://www.nexusmods.com/* URLs are accepted (SSRF guard)."
     ),
+    website_url="https://github.com/Talya1412/nexus-mcp",
 )
+
+mcp._mcp_server.version = APP_VERSION

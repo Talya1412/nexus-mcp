@@ -12,6 +12,7 @@ from .._annotations import (
 )
 from .._core import (
     _gql_call,
+    _load_oauth_tokens,
 )
 from .._server import mcp
 
@@ -195,6 +196,8 @@ async def nexus_restore_comment(
     Returns:
         JSON {restoreComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
     """
+    if _load_oauth_tokens() is None:
+        return "Error: restoreComment requires an OAuth login - run nexus_oauth_login + nexus_oauth_exchange first."
     return await _gql_call(
         "mutation($id: ID!) { restoreComment(commentId: $id) { ... on RestoreCommentMutationPayload { comment { id isDiscarded discardedAt } } } }",
         {"id": str(comment_id)},

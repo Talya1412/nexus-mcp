@@ -36,7 +36,7 @@ from pydantic.fields import FieldInfo
 API_BASE = "https://api.nexusmods.com"
 GRAPHQL_PATH = "/v2/graphql"
 APP_NAME = "nexus-mcp"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 __version__ = APP_VERSION
 
 RL_HEADERS = [
@@ -313,14 +313,11 @@ def _rl_snapshot(response: httpx.Response) -> dict[str, str]:
     return rl
 
 
-def _status_hint(status: int) -> str:
+def _status_hint(status: int, path: str = "") -> str:
     hints = {
-        400: "Bad request: 'key'/'expires' for download_link.json must come from a .nxm link.",
+        400: "Bad request: check parameter formats.",
         401: "Invalid/missing credentials. Check NEXUS_API_KEY or refresh OAuth.",
-        403: (
-            "Not permitted: pass 'key'/'expires' from a .nxm link for download_link.json,"
-            " unless premium (may omit them)."
-        ),
+        403: "Not permitted.",
         404: (
             "Not found. Check domain_name (lowercase slug, e.g. 'forzahorizon6')"
             " and mod_id/file_id."
@@ -328,7 +325,13 @@ def _status_hint(status: int) -> str:
         410: "Download link expired: request a fresh .nxm link from Nexus.",
         422: "Unprocessable request: check parameter formats.",
     }
-    return hints.get(status, "")
+    hint = hints.get(status, "")
+    if "download_link.json" in path and status in (400, 403):
+        hint = (
+            "For download_link.json the 'key'/'expires' query params must come from a"
+            " .nxm link (unless premium, which may omit them). " + hint
+        )
+    return hint
 
 
 async def _api(
@@ -430,7 +433,7 @@ async def _request(
         except json.JSONDecodeError:
             pass
         raise NexusApiError(
-            f"API error {response.status_code}{detail}. {_status_hint(response.status_code)}".strip()
+            f"API error {response.status_code}{detail}. {_status_hint(response.status_code, path)}".strip()
         )
 
     try:
@@ -526,7 +529,21 @@ async def _graphql(query: str, variables: dict[str, Any] | None = None) -> tuple
 
     rl = _rl_snapshot(response)
     if response.status_code >= 400:
-        raise NexusApiError(f"GraphQL error {response.status_code}. {_status_hint(response.status_code)}".strip())
+        detail = ""
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                msg = body.get("message") or body.get("error")
+                if isinstance(msg, str) and msg:
+                    detail = f" API says: {msg}"
+                elif isinstance(body.get("errors"), (list, dict)):
+                    detail = f" API says: {json.dumps(body['errors'])}"
+        except json.JSONDecodeError:
+            pass
+        hint = _status_hint(response.status_code, GRAPHQL_PATH)
+        raise NexusApiError(
+            f"GraphQL error {response.status_code}{detail}. {hint}".strip()
+        )
     try:
         result = response.json()
     except json.JSONDecodeError:

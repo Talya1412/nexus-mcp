@@ -231,27 +231,42 @@ async def nexus_submit_moderation_fix(
 
 
 def _collection_manifest(
-    name: str,
-    domain_name: str,
-    author: str,
-    summary: str | None,
-    description: str | None,
-    author_url: str | None,
-    game_versions: str | None,
-    mods_json: str | None,
+    name: Any,
+    domain_name: Any,
+    author: Any,
+    summary: Any,
+    description: Any,
+    author_url: Any,
+    game_versions: Any,
+    mods_json: Any,
 ) -> dict[str, Any]:
-    info: dict[str, Any] = {"name": name, "domainName": domain_name, "author": author}
-    if summary is not None:
+    info: dict[str, Any] = {}
+    for key, value in (("name", name), ("domainName", domain_name), ("author", author)):
+        value = _opt(value)
+        if isinstance(value, str) and value:
+            info[key] = value
+    summary = _opt(summary)
+    description = _opt(description)
+    author_url = _opt(author_url)
+    game_versions = _opt(game_versions)
+    mods_json = _opt(mods_json)
+    if isinstance(summary, str):
         info["summary"] = summary
-    if description is not None:
+    if isinstance(description, str):
         info["description"] = description
-    if author_url is not None:
+    if isinstance(author_url, str):
         info["authorUrl"] = author_url
-    if game_versions is not None:
+    if isinstance(game_versions, str) and game_versions:
         info["gameVersions"] = _split_ids(game_versions)
     mods: list[Any] = []
-    if mods_json is not None:
-        mods = json.loads(mods_json)
+    if isinstance(mods_json, str) and mods_json.strip():
+        try:
+            parsed = json.loads(mods_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"mods_json is not valid JSON ({exc}).") from None
+        if not isinstance(parsed, list):
+            raise ValueError("mods_json must be a JSON array.")
+        mods = parsed
     return {"info": info, "mods": mods}
 
 
@@ -279,18 +294,27 @@ async def nexus_create_collection(
     Returns:
         JSON {success, collectionId, revisionId} or an error string.
     """
-    if collection_data_json is not None:
-        payload = json.loads(collection_data_json)
+    if isinstance(collection_data_json, str):
+        try:
+            payload = json.loads(collection_data_json)
+        except json.JSONDecodeError as exc:
+            return f"Error: collection_data_json is not valid JSON ({exc})."
+        if not isinstance(payload, dict):
+            return "Error: collection_data_json must be a JSON object."
     else:
-        payload = {
-            "adultContent": bool(adult_content),
-            "collectionManifest": _collection_manifest(
-                name, domain_name, author, summary, description, author_url,
-                game_versions, mods_json,
-            ),
-        }
-        if collection_schema_id is not None:
-            payload["collectionSchemaId"] = collection_schema_id
+        try:
+            payload = {
+                "adultContent": bool(adult_content),
+                "collectionManifest": _collection_manifest(
+                    name, domain_name, author, summary, description, author_url,
+                    game_versions, mods_json,
+                ),
+            }
+        except ValueError as exc:
+            return f"Error: {exc}"
+        schema_id = _opt(collection_schema_id)
+        if isinstance(schema_id, int):
+            payload["collectionSchemaId"] = schema_id
     uuid_val = _opt(collection_uuid) or str(uuid.uuid4())
     return await _gql_call(
         "mutation($c: CollectionPayload!, $u: String!) { createCollection(collectionData: $c, uuid: $u) { ... on CreateCollectionMutationPayload { success collectionId revisionId } } }",
@@ -355,16 +379,24 @@ async def nexus_create_or_update_revision(
     Returns:
         JSON {success, collectionId, revisionId, revisionNumber} or an error string.
     """
-    if collection_data_json is not None:
-        payload = json.loads(collection_data_json)
+    if isinstance(collection_data_json, str):
+        try:
+            payload = json.loads(collection_data_json)
+        except json.JSONDecodeError as exc:
+            return f"Error: collection_data_json is not valid JSON ({exc})."
+        if not isinstance(payload, dict):
+            return "Error: collection_data_json must be a JSON object."
     else:
-        payload = {
-            "adultContent": bool(adult_content),
-            "collectionManifest": _collection_manifest(
-                name or "", domain_name or "", author or "", summary, description,
-                author_url, game_versions, mods_json,
-            ),
-        }
+        try:
+            payload = {
+                "adultContent": bool(adult_content),
+                "collectionManifest": _collection_manifest(
+                    name, domain_name, author, summary, description,
+                    author_url, game_versions, mods_json,
+                ),
+            }
+        except ValueError as exc:
+            return f"Error: {exc}"
     uuid_val = _opt(collection_uuid) or str(uuid.uuid4())
     return await _gql_call(
         "mutation($c: CollectionPayload!, $i: Int!, $u: String!) { createOrUpdateRevision(collectionData: $c, collectionId: $i, uuid: $u) { ... on CreateOrUpdateRevisionMutationPayload { success collectionId revisionId revisionNumber } } }",
@@ -503,7 +535,7 @@ async def nexus_unlist_collection(
     """
     return await _gql_call(
         "mutation($i: Int!) { unlistCollection(collectionId: $i) { ... on UnlistCollectionMutationPayload { success } } }",
-        {"i": str(collection_id)},
+        {"i": collection_id},
     )
 
 

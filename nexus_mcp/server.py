@@ -2,9 +2,12 @@
 
 from . import tools  # noqa: F401 - registers all tools on import
 from ._core import APP_VERSION as __version__
+from ._profiles import _apply_profile
 from ._server import mcp
 
 __all__ = ["__version__", "main", "mcp"]
+
+_apply_profile()
 
 
 def main() -> None:

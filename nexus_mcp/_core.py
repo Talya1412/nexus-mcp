@@ -342,6 +342,35 @@ async def _api(
     return payload, rl
 
 
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """Parse a numeric Retry-After header; HTTP-date form and garbage return None."""
+    value = response.headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+async def _send(
+    client: httpx.AsyncClient,
+    method: str,
+    path: str,
+    params: dict[str, Any] | None,
+    data: dict[str, Any] | None,
+) -> httpx.Response:
+    try:
+        return await client.request(method, path, params=params, data=data, headers=await _auth_headers())
+    except httpx.TimeoutException as exc:
+        raise NexusApiError("Request timed out after 30s. Try again.") from exc
+    except httpx.HTTPError as exc:
+        raise NexusApiError(f"Network error: {type(exc).__name__}: {exc}") from exc
+
+
+_RETRY_AFTER_MAX_WAIT = 30.0
+
+
 async def _request(
     method: str,
     path: str,
@@ -349,12 +378,13 @@ async def _request(
     data: dict[str, Any] | None,
 ) -> tuple[Any, dict[str, str]]:
     client = _get_client()
-    try:
-        response = await client.request(method, path, params=params, data=data, headers=await _auth_headers())
-    except httpx.TimeoutException as exc:
-        raise NexusApiError("Request timed out after 30s. Try again.") from exc
-    except httpx.HTTPError as exc:
-        raise NexusApiError(f"Network error: {type(exc).__name__}: {exc}") from exc
+    response = await _send(client, method, path, params, data)
+
+    if response.status_code == 429:
+        wait = _retry_after_seconds(response)
+        if wait is not None and 0 <= wait <= _RETRY_AFTER_MAX_WAIT:
+            await asyncio.sleep(wait)
+            response = await _send(client, method, path, params, data)
 
     rl = _rl_snapshot(response)
 
@@ -364,8 +394,10 @@ async def _request(
             "the side effect may or may not have been applied - re-check the resource state."
         )
     if response.status_code == 429:
+        wait = _retry_after_seconds(response)
+        wait_note = f" Server asked to retry after {wait:g}s." if wait is not None else ""
         raise NexusApiError(
-            f"Rate limit exceeded (quota or >30 requests/second). Remaining quota: "
+            f"Rate limit exceeded (quota or >30 requests/second).{wait_note} Remaining quota: "
             f"{json.dumps(rl) if rl else 'unknown'}. Wait for the reset window before retrying."
         )
     if response.status_code >= 400:

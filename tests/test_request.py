@@ -185,3 +185,66 @@ class TestNoCacheCollisions:
         p2, _ = run(core._api("GET", "/v1/games/skyrim/mods/2.json"))
         assert p1 == {"modId": 1}
         assert p2 == {"modId": 2}
+
+
+class TestRetryAfter:
+    def test_retry_after_zero_retries_then_succeeds(self, monkeypatch):
+        calls = {"n": 0}
+        slept: list[float] = []
+
+        async def fake_sleep(seconds):
+            slept.append(seconds)
+
+        def handler(request):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(429, headers={"Retry-After": "0"}, json={})
+            return httpx.Response(200, json={"ok": True})
+
+        monkeypatch.setattr(core.asyncio, "sleep", fake_sleep)
+        install(handler)
+        payload, _rl = run(core._api("GET", "/v1/thing.json"))
+        assert payload == {"ok": True}
+        assert calls["n"] == 2, "429 with Retry-After within the cap must be retried once"
+        assert slept == [0.0]
+
+    def test_always_429_reports_retry_after(self, monkeypatch):
+        slept: list[float] = []
+
+        async def fake_sleep(seconds):
+            slept.append(seconds)
+
+        def handler(request):
+            return httpx.Response(429, headers={"Retry-After": "1", "X-RL-Hourly-Remaining": "0"}, json={})
+
+        monkeypatch.setattr(core.asyncio, "sleep", fake_sleep)
+        install(handler)
+        out = run(core._call("GET", "/v1/busy.json"))
+        assert "Rate limit exceeded" in out
+        assert "retry after 1s" in out
+        assert slept == [1.0]
+
+    def test_long_retry_after_is_reported_but_not_slept(self, monkeypatch):
+        async def boom(seconds):
+            raise AssertionError("must not sleep for waits above the 30s cap")
+
+        def handler(request):
+            return httpx.Response(429, headers={"Retry-After": "600"}, json={})
+
+        monkeypatch.setattr(core.asyncio, "sleep", boom)
+        install(handler)
+        out = run(core._call("GET", "/v1/slow.json"))
+        assert "retry after 600s" in out
+
+    def test_http_date_retry_after_is_ignored(self, monkeypatch):
+        async def boom(seconds):
+            raise AssertionError("HTTP-date Retry-After must not be auto-slept")
+
+        def handler(request):
+            return httpx.Response(429, headers={"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}, json={})
+
+        monkeypatch.setattr(core.asyncio, "sleep", boom)
+        install(handler)
+        out = run(core._call("GET", "/v1/dated.json"))
+        assert "Rate limit exceeded" in out
+        assert "retry after" not in out

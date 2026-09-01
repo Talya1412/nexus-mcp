@@ -50,6 +50,26 @@ RL_HEADERS = [
 
 DOMAIN_DESC = "Nexus Mods game domain (lowercase URL slug), e.g. 'forzahorizon6', 'skyrimse'. NOT the display name."
 
+_DOMAIN_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+def _check_domain(domain_name: Any) -> str | None:
+    """Return an error string for an invalid domain slug, or None when valid.
+
+    None means "parameter omitted" and is treated as valid, so callers with
+    an optional domain_name can guard unconditionally.
+    """
+    if domain_name is None:
+        return None
+    if isinstance(domain_name, str) and _DOMAIN_SLUG_RE.fullmatch(domain_name):
+        return None
+    return (
+        f"Error: invalid domain_name {domain_name!r} - pass the lowercase URL slug "
+        "(e.g. 'skyrimspecialedition', 'forzahorizon6'), not the display name; "
+        "resolve unknown games with nexus_resolve_domain or nexus_get_games."
+    )
+
+
 class NexusApiError(Exception):
     """Raised for config, network, or API-level failures with actionable messages.
 

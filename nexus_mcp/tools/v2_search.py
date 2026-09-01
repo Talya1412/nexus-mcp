@@ -15,6 +15,7 @@ from .._core import (
     _GAME_ID_QUERY,
     _MOD_SEARCH_FIELDS,
     DOMAIN_DESC,
+    _check_domain,
     _gql_call,
     _gql_page,
 )
@@ -85,6 +86,8 @@ async def nexus_search_mods(
     if term:
         flt["name"] = [{"value": term, "op": "WILDCARD"}]
     if domain_name:
+        if err := _check_domain(domain_name):
+            return err
         flt["gameDomainName"] = [{"value": domain_name, "op": "EQUALS"}]
     if min_endorsements is not None:
         flt["endorsements"] = [{"value": min_endorsements, "op": "GTE"}]
@@ -158,6 +161,8 @@ async def nexus_get_mod_v2(
         strip before display), requirements}, files: [{fileId, name, version,
         category, sizeInBytes, totalDownloads, date, description}]}.
     """
+    if err := _check_domain(domain_name):
+        return err
     game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
     try:
         game = json.loads(game_data)
@@ -525,4 +530,6 @@ async def nexus_get_game_v2(
     Returns:
         JSON game object, or {error: ...} for unknown domains.
     """
+    if err := _check_domain(domain_name):
+        return err
     return await _gql_call(_GAME_DETAIL_QUERY, {"domain": domain_name})

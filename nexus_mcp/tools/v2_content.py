@@ -14,6 +14,7 @@ from .._core import (
     _GAME_ID_QUERY,
     _MOD_SEARCH_FIELDS,
     DOMAIN_DESC,
+    _check_domain,
     _gql_call,
     _gql_page,
 )
@@ -46,6 +47,8 @@ async def nexus_get_files_v2(
         JSON {totalFiles, _returned, files: [{fileId, name, version, category,
         sizeInBytes, totalDownloads, date, description}]}.
     """
+    if err := _check_domain(domain_name):
+        return err
     game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
     try:
         game = json.loads(game_data)
@@ -181,6 +184,8 @@ async def nexus_get_mod_endorsers(
         JSON {pageInfo: {endCursor, hasNextPage}, nodes: [{memberId, name,
         avatar, modCount, kudos, ...}]}. Paginate with after_cursor.
     """
+    if err := _check_domain(domain_name):
+        return err
     game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
     try:
         game = json.loads(game_data)
@@ -243,6 +248,8 @@ async def nexus_get_news(
     """
     game_id: int | None = None
     if domain_name:
+        if err := _check_domain(domain_name):
+            return err
         game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
         try:
             game = json.loads(game_data)
@@ -302,6 +309,8 @@ async def nexus_get_categories(
         return await _gql_call(_GLOBAL_CATEGORIES_QUERY, {})
     if not domain_name:
         return "Error: provide domain_name or set is_global=true."
+    if err := _check_domain(domain_name):
+        return err
     game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
     try:
         game = json.loads(game_data)
@@ -342,6 +351,8 @@ async def nexus_get_tags(
     Returns:
         JSON list [{id, name, parentId, global, blockable, searchable}].
     """
+    if err := _check_domain(domain_name):
+        return err
     game_data = await _gql_call(_GAME_ID_QUERY, {"domain": domain_name})
     try:
         game = json.loads(game_data)
@@ -425,6 +436,8 @@ async def nexus_get_collection_revision(
         overallRating, totalDownloads, uniqueDownloads, modCount, totalSize,
         collection}.
     """
+    if err := _check_domain(domain_name):
+        return err
     return await _gql_call(
         _COLLECTION_REVISION_QUERY,
         {"slug": slug, "rev": revision, "adult": view_adult_content, "domain": domain_name},

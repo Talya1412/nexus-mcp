@@ -71,16 +71,8 @@ async def nexus_search_mods(
 ) -> str:
     """Search Nexus Mods with free text + filters, sorted and paginated.
 
-    Backed by the v2 GraphQL API (https://api.nexusmods.com/v2/graphql), which
-    does NOT consume the v1 REST rate-limit quota. The v1 REST API has no
-    free-text search, so this is the only way to search by name.
-
     Returns:
-        JSON {totalCount, _returned, nodes: [{modId, uid, name, summary, author,
-        version, downloads, endorsements, fileSize, game, modCategory, uploader,
-        pictureUrl, ...}]}. Paginate with offset += _returned until
-        offset >= totalCount. Note: description (full BBCode) is NOT included
-        here - use nexus_get_mod_v2 for full mod details.
+        JSON {totalCount, _returned, nodes: [{modId, uid, name, summary, author, version, downloads, endorsements, game, uploader, ...}]}; description (full BBCode) NOT included - use nexus_get_mod_v2 for full details.
     """
     flt: dict[str, Any] = {}
     if term:
@@ -113,11 +105,7 @@ async def nexus_search_mods(
     if isinstance(page, dict) and "totalCount" in page:
         nodes = page.get("nodes") or []
         result = {**page, "nodes": nodes, "_returned": len(nodes)}
-        result["_hint"] = (
-            "Paginate: offset += _returned while offset < totalCount. "
-            "Page size may be capped silently by the server."
-        )
-        return json.dumps(result, indent=2, ensure_ascii=False)
+        return json.dumps(result, separators=(",", ":"), ensure_ascii=False)
     return data
 
 
@@ -150,16 +138,10 @@ async def nexus_get_mod_v2(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID (same as v1).", ge=1),
 ) -> str:
-    """Get rich mod details via v2 GraphQL: full description (raw BBCode),
-    tags, requirements, and complete file list - none of which v1 REST exposes.
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota.
+    """Get rich mod details (v2): raw-BBCode description, tags, requirements, complete file list - none exposed by v1 REST.
 
     Returns:
-        JSON {mod: {..., description (BBCode + literal <br /> tags - render or
-        strip before display), requirements}, files: [{fileId, name, version,
-        category, sizeInBytes, totalDownloads, date, description}]}.
+        JSON {mod: {..., description (BBCode + literal <br /> tags - render or strip before display), requirements}, files: [{fileId, name, version, category, sizeInBytes, totalDownloads, date, description}]}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -172,7 +154,7 @@ async def nexus_get_mod_v2(
     if not game_id:
         return json.dumps(
             {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
-            indent=2,
+            separators=(",", ":"),
         )
     return await _gql_call(_MOD_DETAIL_QUERY, {"modId": mod_id, "gameId": game_id})
 
@@ -206,12 +188,10 @@ async def nexus_get_user_v2(
 ) -> str:
     """Get a public Nexus Mods user profile by member ID or exact username.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Provide exactly one of member_id or username.
+    Provide exactly one of member_id or username.
 
     Returns:
-        JSON {memberId, name, about, avatar, modCount, joined, kudos,
-        contributedModCount, collectionCount, recognizedAuthor, lastActive, posts}.
+        JSON {memberId, name, about, avatar, modCount, joined, kudos, contributedModCount, collectionCount, recognizedAuthor, lastActive, posts}.
     """
     if bool(member_id) == bool(username):
         return "Error: provide exactly one of member_id or username."
@@ -225,7 +205,7 @@ async def nexus_get_user_v2(
         return data
     user = parsed.get("user") or parsed.get("userByName") if isinstance(parsed, dict) else None
     if user:
-        return json.dumps(user, indent=2, ensure_ascii=False)
+        return json.dumps(user, separators=(",", ":"), ensure_ascii=False)
     return data
 
 
@@ -261,12 +241,8 @@ async def nexus_search_collections(
 ) -> str:
     """Search Nexus Mods collections (curated mod packs) with free text.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. v1 REST has no collections search at all.
-
     Returns:
-        JSON {totalCount, _returned, nodes: [{slug, name, summary, endorsements,
-        totalDownloads, overallRating, game, user, ...}]}.
+        JSON {totalCount, _returned, nodes: [{slug, name, summary, endorsements, totalDownloads, overallRating, game, user, ...}]}.
     """
     flt: dict[str, Any] = {}
     if term:
@@ -300,7 +276,7 @@ async def nexus_search_collections(
     if isinstance(page, dict) and "totalCount" in page:
         nodes = page.get("nodes") or []
         result = {**page, "nodes": nodes, "_returned": len(nodes)}
-        return json.dumps(result, indent=2, ensure_ascii=False)
+        return json.dumps(result, separators=(",", ":"), ensure_ascii=False)
     return data
 
 
@@ -329,13 +305,10 @@ async def nexus_graphql_introspect(
 ) -> str:
     """Introspect any type in the Nexus v2 GraphQL schema.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Useful for discovering filters, sorts, and fields
-    before composing a query with nexus_graphql_query.
+    Useful for discovering filters, sorts, and fields before composing a query with nexus_graphql_query.
 
     Returns:
-        JSON {name, kind, description, fields: [{name, type}], inputFields,
-        enumValues} or null if the type does not exist.
+        JSON {name, kind, description, fields: [{name, type}], inputFields, enumValues} or null if the type does not exist.
     """
     return await _gql_call(_GQL_INTROSPECT_QUERY, {"t": type_name})
 
@@ -350,14 +323,10 @@ async def nexus_graphql_query(
 ) -> str:
     """Run a raw query against the Nexus v2 GraphQL API (power-user escape hatch).
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Introspect types with nexus_graphql_introspect first to
-    build valid queries. Use for read-only queries; most mutations require
-    OAuth scopes this server does not have and will fail cleanly.
+    Read-only: most mutations need OAuth scopes this server lacks and fail cleanly. Introspect types with nexus_graphql_introspect first.
 
     Returns:
-        The raw GraphQL 'data' payload as JSON, or 'Error: ...' with the
-        server-side GraphQL error messages.
+        The raw GraphQL 'data' payload as JSON, or 'Error: ...' with server-side GraphQL error messages.
     """
     try:
         parsed_vars = json.loads(variables)
@@ -394,14 +363,10 @@ async def nexus_search_users(
     offset: int = Field(default=0, description="Offset-based pagination start.", ge=0),
     count: int = Field(default=20, description="Results per page.", ge=1, le=100),
 ) -> str:
-    """Search Nexus Mods users by username (v2 GraphQL).
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Unlike nexus_get_user_v2 this supports partial names.
+    """Search Nexus Mods users by username (v2 GraphQL); supports partial names unlike nexus_get_user_v2.
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{memberId, name, avatar, modCount,
-        joined, kudos, ...}]}. Paginate with offset += _returned.
+        JSON {totalCount, _returned, nodes: [{memberId, name, avatar, modCount, joined, kudos, ...}]}.
     """
     if mode == "exact":
         flt: dict[str, Any] = {"nameExact": [{"value": term}]}
@@ -447,12 +412,10 @@ async def nexus_search_games(
 ) -> str:
     """Search Nexus Mods games by name, sorted and paginated (v2 GraphQL).
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Complements nexus_get_games (full cached catalog).
+    Complements nexus_get_games (full cached catalog).
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{domainName, name, id, modCount,
-        downloadCount, genre, forumUrl, supportsVortex, approvedAt}]}.
+        JSON {totalCount, _returned, nodes: [{domainName, name, id, modCount, downloadCount, genre, forumUrl, supportsVortex, approvedAt}]}.
     """
     flt: dict[str, Any] | None = None
     if term:
@@ -481,16 +444,10 @@ async def nexus_resolve_domain(
 ) -> str:
     """Resolve a game display name to its `domain_name` slug (v2 GraphQL).
 
-    Convenience wrapper for agents: most tools require a lowercase
-    `domain_name` slug (e.g. 'skyrimspecialedition'), NOT the display name.
-    Call this first when you only know the game's name, then pass the returned
-    `domainName` value to the other tools.
-
-    Backed by the v2 GraphQL API (does not consume the v1 REST quota).
+    Call first when you only know the game's name; most tools need the lowercase domain slug, not the display name.
 
     Returns:
-        JSON {totalCount, _returned, nodes: [{domainName, name, id}]} -
-        best matches first; take `domainName` from the intended node.
+        JSON {totalCount, _returned, nodes: [{domainName, name, id}]}; best matches first - take `domainName` from the intended node.
     """
     data = await _gql_call(
         _GAMES_SEARCH_QUERY,
@@ -521,11 +478,7 @@ query GameDetail($domain: String!) {
 async def nexus_get_game_v2(
     domain_name: str = Field(..., description=DOMAIN_DESC),
 ) -> str:
-    """Get rich game details via v2 GraphQL: mod/download/collection counts,
-    genre, forum URL, Vortex support.
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota.
+    """Get rich game details via v2 GraphQL: mod/download/collection counts, genre, forum URL, Vortex support.
 
     Returns:
         JSON game object, or {error: ...} for unknown domains.

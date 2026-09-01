@@ -51,13 +51,9 @@ async def nexus_oauth_login(
 ) -> str:
     """Start the OAuth2 authorization-code flow: returns the URL to open in a browser.
 
-    Uses PKCE S256 + random state (per the official Nexus OAuth guide). After
-    approving, copy the 'code' query parameter from the final redirect URL and
-    pass it to nexus_oauth_exchange. Bearer tokens then take precedence over
-    NEXUS_API_KEY and unlock user-context mutations.
+    Uses PKCE S256 + random state; after approving, copy the 'code' query param from the final redirect URL and pass it to nexus_oauth_exchange.
 
-    Returns:
-        JSON {authorize_url, redirect_uri, state, instructions}.
+    Returns: JSON {authorize_url, redirect_uri, state, instructions}.
     """
     global _oauth_pending
     client_id = _oauth_client_id()
@@ -88,7 +84,7 @@ async def nexus_oauth_login(
             "(e.g. http://localhost/callback?code=XXXX -> XXXX). "
             "3. Call nexus_oauth_exchange with that code."
         ),
-    }, indent=2)
+    }, separators=(",", ":"))
 
 
 @mcp.tool(name="nexus_oauth_exchange", annotations={**_MUTATING_ANNOTATIONS, "title": "Complete Nexus OAuth login"})
@@ -98,13 +94,9 @@ async def nexus_oauth_exchange(
 ) -> str:
     """Complete the OAuth2 flow: exchange the authorization code for tokens.
 
-    Exchanges via PKCE code_verifier (+ client_secret when configured), saves
-    tokens to the token file, and validates the identity with the resulting
-    Bearer token. Tokens auto-refresh; any 4xx refresh response is treated as
-    revocation per the official guide.
+    Saves tokens to the token file; tokens auto-refresh and a 4xx refresh response is treated as revocation per the official guide.
 
-    Returns:
-        JSON account summary from nexus_validate_key, or an error string.
+    Returns: JSON account summary from nexus_validate_key, or an error string.
     """
     global _oauth_pending
     pending = _oauth_pending
@@ -143,8 +135,7 @@ async def nexus_oauth_status() -> str:
 
     Never exposes the access token itself - only a prefix and expiry metadata.
 
-    Returns:
-        JSON {configured, logged_in, expires_at, scope, has_refresh_token, token_file}.
+    Returns: JSON {configured, logged_in, expires_at, scope, has_refresh_token, token_file}.
     """
     tokens = _load_oauth_tokens()
     info: dict[str, Any] = {
@@ -164,19 +155,16 @@ async def nexus_oauth_status() -> str:
             "scope": tokens.get("scope"),
             "has_refresh_token": bool(tokens.get("refresh_token")),
         })
-    return json.dumps(info, indent=2)
+    return json.dumps(info, separators=(",", ":"))
 
 
 @mcp.tool(name="nexus_oauth_refresh", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Force OAuth token refresh"})
 async def nexus_oauth_refresh() -> str:
     """Force a refresh of the OAuth access token via the refresh grant.
 
-    Use when a request unexpectedly returns 401. A 4xx refresh failure means
-    the user revoked the application (see https://users.nexusmods.com/oauth/authorized_applications)
-    and the stored tokens are cleared - log in again with nexus_oauth_login.
+    Use after a 401. A 4xx failure means the app was revoked (users.nexusmods.com/oauth/authorized_applications); tokens are cleared - re-login with nexus_oauth_login.
 
-    Returns:
-        JSON {refreshed, expires_at, scope} or an error string.
+    Returns: JSON {refreshed, expires_at, scope} or an error string.
     """
     tokens = _load_oauth_tokens()
     if not tokens:
@@ -188,24 +176,22 @@ async def nexus_oauth_refresh() -> str:
         "refreshed": True,
         "expires_at": refreshed["expires_at"],
         "scope": refreshed.get("scope"),
-    }, indent=2)
+    }, separators=(",", ":"))
 
 
 @mcp.tool(name="nexus_oauth_logout", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Log out of OAuth"})
 async def nexus_oauth_logout() -> str:
     """Delete stored OAuth tokens and fall back to NEXUS_API_KEY authentication.
 
-    Removes the local token file. To fully revoke access, also remove the
-    application at https://users.nexusmods.com/oauth/authorized_applications.
+    To fully revoke access, also remove the application at https://users.nexusmods.com/oauth/authorized_applications.
 
-    Returns:
-        JSON {logged_out: true}.
+    Returns: JSON {logged_out: true}.
     """
     global _oauth_pending
     _clear_oauth_tokens()
     _clear_cache()
     _oauth_pending = None
-    return json.dumps({"logged_out": True})
+    return json.dumps({"logged_out": True}, separators=(",", ":"))
 
 
 @mcp.tool(name="nexus_update_mod_direct_download", annotations={**_IDEMPOTENT_MUTATION_ANNOTATIONS, "title": "Toggle mod direct download (v2)"})
@@ -215,12 +201,9 @@ async def nexus_update_mod_direct_download(
 ) -> str:
     """Enable or disable direct (no-ads) downloads on your own mod via v2 GraphQL.
 
-    REQUIRES OAuth login (nexus_oauth_login + nexus_oauth_exchange): this
-    user-context mutation is rejected under apikey-only auth even for the
-    mod owner. Useful for mod authors automating release pipelines.
+    REQUIRES OAuth login (nexus_oauth_login + nexus_oauth_exchange): rejected under apikey-only auth even for the mod owner.
 
-    Returns:
-        JSON payload from Nexus or an error string.
+    Returns: JSON payload from Nexus or an error string.
     """
     return await _gql_call(
         "mutation($u: ID!, $e: Boolean!) { updateModDirectDownloadEnabled(modUid: $u, directDownloadEnabled: $e) { ... on UpdateModDirectDownloadEnabledMutationPayload { success } } }",

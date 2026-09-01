@@ -22,8 +22,6 @@ async def nexus_track_user(
 ) -> str:
     """Start tracking a user (get notifications about their new mods) via v2 GraphQL.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-
     Returns:
         JSON {trackUser: {success}} or an error string.
     """
@@ -38,8 +36,6 @@ async def nexus_untrack_user(
     user_id: int = Field(..., description="Nexus Mods member ID to stop tracking.", ge=1),
 ) -> str:
     """Stop tracking a user via v2 GraphQL.
-
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
 
     Returns:
         JSON {untrackUser: {success}} or an error string.
@@ -56,8 +52,6 @@ async def nexus_give_kudos(
 ) -> str:
     """Give kudos to a user via v2 GraphQL.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-
     Returns:
         JSON {giveKudos: {success}} or an error string.
     """
@@ -72,8 +66,6 @@ async def nexus_remove_kudos(
     user_id: int = Field(..., description="Nexus Mods member ID to remove kudos from.", ge=1),
 ) -> str:
     """Remove previously given kudos from a user via v2 GraphQL.
-
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
 
     Returns:
         JSON {removeKudos: {success}} or an error string.
@@ -90,8 +82,6 @@ async def nexus_add_favourite_game(
 ) -> str:
     """Add a game to your favourites via v2 GraphQL.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-
     Returns:
         JSON {addFavouriteGame: {success}} or an error string.
     """
@@ -106,8 +96,6 @@ async def nexus_remove_favourite_game(
     game_id: int = Field(..., description="Game ID to remove from favourites.", ge=1),
 ) -> str:
     """Remove a game from your favourites via v2 GraphQL.
-
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
 
     Returns:
         JSON {removeFavouriteGame: {success}} or an error string.
@@ -124,8 +112,6 @@ async def nexus_like_comment(
 ) -> str:
     """Like a comment via v2 GraphQL.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-
     Returns:
         JSON {likeComment: {comment}} or an error string.
     """
@@ -140,8 +126,6 @@ async def nexus_remove_comment_like(
     comment_id: int = Field(..., description="Comment ID to remove your like from.", ge=1),
 ) -> str:
     """Remove your like from a comment via v2 GraphQL.
-
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
 
     Returns:
         JSON {removeCommentLike: {comment}} or an error string.
@@ -158,12 +142,9 @@ async def nexus_create_comment(
     body: str = Field(..., description="Comment body text (plain text).", min_length=1),
     reply_to_id: int | None = Field(None, description="Comment ID to reply to; omit for a top-level comment.", ge=1),
 ) -> str:
-    """Post a comment in a thread via v2 GraphQL — top-level by default,
-    or a nested reply when reply_to_id is given.
+    """Post a comment in a thread via v2 GraphQL - top-level by default, or a nested reply when reply_to_id is given.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-    Find thread IDs on mod pages (?tab=posts); forum threads and mod
-    posts have distinct thread IDs.
+    Find thread IDs on mod pages (?tab=posts); forum threads and mod posts have distinct thread IDs.
 
     Returns:
         JSON {createComment: {comment: {id, body, ...}}} or an error string.
@@ -183,7 +164,6 @@ async def nexus_edit_comment(
 ) -> str:
     """Edit the body of your own comment via v2 GraphQL.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
     Only the comment's author can edit it.
 
     Returns:
@@ -201,12 +181,7 @@ async def nexus_discard_comment(
 ) -> str:
     """Discard (soft-delete) a comment via v2 GraphQL.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-    Discarded comments are removed from public view. Only the author
-    (or a moderator) can discard a comment.
-    NOTE: restoring via nexus_restore_comment REQUIRES OAuth Bearer
-    auth - Nexus denies restore under apikey-only auth, so with an API
-    key alone discard is effectively one-way.
+    Only the author (or a moderator) can discard. Restore (nexus_restore_comment) requires OAuth Bearer auth - under apikey-only auth discard is effectively one-way.
 
     Returns:
         JSON {discardComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.
@@ -221,13 +196,9 @@ async def nexus_discard_comment(
 async def nexus_restore_comment(
     comment_id: int = Field(..., description="Comment ID to restore (undo discard).", ge=1),
 ) -> str:
-    """Restore a previously discarded comment via v2 GraphQL.
+    """Restore a previously discarded comment via v2 GraphQL (undo for nexus_discard_comment).
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-    Undo for nexus_discard_comment — the comment becomes publicly
-    visible again.
-    REQUIRES OAuth Bearer auth: Nexus denies restore under apikey-only
-    auth even for your own comments.
+    Requires OAuth Bearer auth: Nexus denies restore under apikey-only auth, even for your own comments.
 
     Returns:
         JSON {restoreComment: {comment: {id, isDiscarded, discardedAt}}} or an error string.

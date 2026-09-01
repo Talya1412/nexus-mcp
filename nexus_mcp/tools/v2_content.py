@@ -37,15 +37,10 @@ async def nexus_get_files_v2(
     domain_name: str = Field(..., description=DOMAIN_DESC),
     mod_id: int = Field(..., description="Numeric mod ID.", ge=1),
 ) -> str:
-    """Get the complete file list of a mod via v2 GraphQL.
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Same data as nexus_get_mod_files but from v2 and
-    therefore quota-free on the v1 pool.
+    """Get the complete file list of a mod via v2 GraphQL (same data as nexus_get_mod_files, from v2).
 
     Returns:
-        JSON {totalFiles, _returned, files: [{fileId, name, version, category,
-        sizeInBytes, totalDownloads, date, description}]}.
+        JSON {totalFiles, _returned, files: [{fileId, name, version, category, sizeInBytes, totalDownloads, date, description}]}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -58,7 +53,7 @@ async def nexus_get_files_v2(
     if not game_id:
         return json.dumps(
             {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
-            indent=2,
+            separators=(",", ":"),
         )
     data = await _gql_call(_MOD_FILES_QUERY, {"modId": mod_id, "gameId": game_id})
     try:
@@ -69,7 +64,7 @@ async def nexus_get_files_v2(
     if isinstance(files, list):
         return json.dumps(
             {"totalFiles": len(files), "_returned": len(files), "files": files},
-            indent=2,
+            separators=(",", ":"),
             ensure_ascii=False,
         )
     return data
@@ -99,15 +94,10 @@ async def nexus_get_mods_batch(
     offset: int = Field(default=0, description="Offset into the resolved mod list.", ge=0),
     count: int = Field(default=25, description="Max mods to return.", ge=1, le=100),
 ) -> str:
-    """Fetch many mods across games in a single v2 GraphQL query.
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Batch equivalent of nexus_get_mod - ideal for
-    resolving many mod IDs at once without burning quota.
+    """Fetch many mods across games in a single v2 GraphQL query (batch equivalent of nexus_get_mod).
 
     Returns:
-        JSON {totalResolved, _returned, mods: [...same shape as
-        nexus_search_mods nodes...]}.
+        JSON {totalResolved, _returned, mods: [...same shape as nexus_search_mods nodes...]}.
     """
     entries: list[dict[str, Any]] = []
     bad: list[str] = []
@@ -123,7 +113,7 @@ async def nexus_get_mods_batch(
     if bad:
         return json.dumps(
             {"error": 'Invalid entries (expected "domain:modId"):', "entries": bad},
-            indent=2,
+            separators=(",", ":"),
         )
     if not entries:
         return "Error: provide at least one \"domain:modId\" entry."
@@ -136,14 +126,14 @@ async def nexus_get_mods_batch(
     if isinstance(root, list):
         return json.dumps(
             {"totalResolved": len(root), "_returned": len(root), "mods": root},
-            indent=2,
+            separators=(",", ":"),
             ensure_ascii=False,
         )
     if isinstance(root, dict) and "nodes" in root:
         nodes = root.get("nodes") or []
         return json.dumps(
             {"totalResolved": root.get("totalCount", len(nodes)), "_returned": len(nodes), "mods": nodes},
-            indent=2,
+            separators=(",", ":"),
             ensure_ascii=False,
         )
     return data
@@ -177,12 +167,8 @@ async def nexus_get_mod_endorsers(
 ) -> str:
     """List users who endorsed a mod via v2 GraphQL.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Resolves the mod's uid first (two-step, both cached).
-
     Returns:
-        JSON {pageInfo: {endCursor, hasNextPage}, nodes: [{memberId, name,
-        avatar, modCount, kudos, ...}]}. Paginate with after_cursor.
+        JSON {pageInfo: {endCursor, hasNextPage}, nodes: [{memberId, name, avatar, modCount, kudos, ...}]}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -195,7 +181,7 @@ async def nexus_get_mod_endorsers(
     if not game_id:
         return json.dumps(
             {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
-            indent=2,
+            separators=(",", ":"),
         )
     uid_data = await _gql_call(_MOD_UID_QUERY, {"modId": mod_id, "gameId": game_id})
     try:
@@ -206,7 +192,7 @@ async def nexus_get_mod_endorsers(
     if not mod_uid:
         return json.dumps(
             {"error": f"Mod {mod_id} not found in '{domain_name}' (uid lookup returned nothing).", "mod": uid_parsed},
-            indent=2,
+            separators=(",", ":"),
         )
     return await _gql_call(_MOD_ENDORSERS_QUERY, {"modUid": mod_uid, "first": first})
 
@@ -239,12 +225,8 @@ async def nexus_get_news(
 ) -> str:
     """Get Nexus Mods news articles (site news, game news, interviews, ...).
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Filter by category and/or game.
-
     Returns:
-        JSON {totalCount, _returned, nodes: [{id, title, summary, author, date,
-        newsCategory, sourceName, sourceUrl, commentsCount, image, games}]}.
+        JSON {totalCount, _returned, nodes: [{id, title, summary, author, date, newsCategory, sourceName, sourceUrl, commentsCount, image, games}]}.
     """
     game_id: int | None = None
     if domain_name:
@@ -259,7 +241,7 @@ async def nexus_get_news(
         if not game_id:
             return json.dumps(
                 {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
-                indent=2,
+                separators=(",", ":"),
             )
     data = await _gql_call(
         _NEWS_QUERY,
@@ -295,10 +277,7 @@ async def nexus_get_categories(
 ) -> str:
     """Get mod categories (per-game or global) via v2 GraphQL.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Provide exactly one of domain_name or is_global.
-    Note: these are collection-style categories (Total Overhaul, Themed,
-    Vanilla Plus, ...) - per-game lists may be sparse for newer games.
+    Provide exactly one of domain_name or is_global. These are collection-style categories (Total Overhaul, Themed, ...) - per-game lists may be sparse for newer games.
 
     Returns:
         JSON list [{id, name, parentId, description, approved, ...}].
@@ -320,7 +299,7 @@ async def nexus_get_categories(
     if not game_id:
         return json.dumps(
             {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
-            indent=2,
+            separators=(",", ":"),
         )
     return await _gql_call(_CATEGORIES_QUERY, {"gameId": game_id})
 
@@ -343,10 +322,7 @@ async def nexus_get_tags(
     only_adult: bool = Field(default=False, description="If true, return only adult-content tags."),
     exclude_adult: bool = Field(default=True, description="If true, exclude adult-content tags from results."),
 ) -> str:
-    """Get the mod tag taxonomy of a game via v2 GraphQL.
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Useful to build tag filters for nexus_search_mods.
+    """Get the mod tag taxonomy of a game via v2 GraphQL (for building nexus_search_mods tag filters).
 
     Returns:
         JSON list [{id, name, parentId, global, blockable, searchable}].
@@ -362,7 +338,7 @@ async def nexus_get_tags(
     if not game_id:
         return json.dumps(
             {"error": f"Unknown domain_name '{domain_name}' (game lookup returned no id).", "game": game},
-            indent=2,
+            separators=(",", ":"),
         )
     return await _gql_call(
         _LEGACY_TAGS_QUERY,
@@ -392,14 +368,10 @@ query CollectionDetail($slug: String!) {
 async def nexus_get_collection(
     slug: str = Field(..., description="Collection slug from nexus_search_collections, e.g. 'collections-skyrimsse-x'."),
 ) -> str:
-    """Get full details of a mod collection by slug via v2 GraphQL.
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. v1 REST has no collection detail endpoint.
+    """Get full details of a mod collection by slug via v2 GraphQL (no v1 REST equivalent).
 
     Returns:
-        JSON {slug, name, summary, description (BBCode), endorsements,
-        downloads, ratings, game, author, tags, category}.
+        JSON {slug, name, summary, description (BBCode), endorsements, downloads, ratings, game, author, tags, category}.
     """
     return await _gql_call(_COLLECTION_DETAIL_QUERY, {"slug": slug})
 
@@ -428,13 +400,8 @@ async def nexus_get_collection_revision(
 ) -> str:
     """Get a specific collection revision (mod count, sizes, status) via v2 GraphQL.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota.
-
     Returns:
-        JSON {id, revisionNumber, revisionStatus, status, adultContent, latest,
-        overallRating, totalDownloads, uniqueDownloads, modCount, totalSize,
-        collection}.
+        JSON {id, revisionNumber, revisionStatus, status, adultContent, latest, overallRating, totalDownloads, uniqueDownloads, modCount, totalSize, collection}.
     """
     if err := _check_domain(domain_name):
         return err
@@ -468,15 +435,10 @@ async def nexus_search_comments(
 ) -> str:
     """Search Nexus Mods comments by text or list a thread's comments.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Provide exactly one of term or thread_id. KNOWN ISSUE:
-    Nexus' searchComments endpoint currently returns HTTP 500 for all
-    requests server-side; errors are surfaced as-is until Nexus fixes it.
-    May also require extra permissions for some threads.
+    Provide exactly one of term or thread_id. KNOWN ISSUE: searchComments currently returns HTTP 500 for all requests server-side; errors surfaced as-is. May require extra permissions for some threads.
 
     Returns:
-        JSON {totalCount, timeTaken, nodes: [{id, body, createdAt, likesCount,
-        isPinned, creator}]}.
+        JSON {totalCount, timeTaken, nodes: [{id, body, createdAt, likesCount, isPinned, creator}]}.
     """
     if bool(term) == bool(thread_id):
         return "Error: provide exactly one of term or thread_id."
@@ -523,19 +485,10 @@ async def nexus_get_comment_thread(
 ) -> str:
     """Get a comment thread with all top-level comments and their replies.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Useful to read replies on threads where
-    nexus_search_comments is unavailable (that endpoint is currently
-    broken upstream).
-
-    NOTE: only thread IDs returned by the GraphQL API itself resolve
-    (e.g. from nexus_search_mods-related queries or createComment).
-    Thread IDs scraped from mod-page posts-tab HTML do NOT resolve
-    ("not found").
+    Useful where nexus_search_comments is unavailable (broken upstream). NOTE: only thread IDs returned by the GraphQL API itself resolve; IDs scraped from mod-page HTML do NOT ("not found").
 
     Returns:
-        JSON {id, comments: {totalCount, nodes: [{id, body, createdAt,
-        likesCount, isPinned, creator, replies: {totalCount, nodes}}]}}.
+        JSON {id, comments: {totalCount, nodes: [{id, body, createdAt, likesCount, isPinned, creator, replies: {totalCount, nodes}}]}}.
     """
     return await _gql_call(_COMMENT_THREAD_QUERY, {"id": str(thread_id)})
 
@@ -559,9 +512,6 @@ async def nexus_get_comment(
 ) -> str:
     """Get a single comment by ID via v2 GraphQL.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota.
-
     Returns:
         JSON {id, body, createdAt, updatedAt, likesCount, isPinned, creator}.
     """
@@ -576,10 +526,7 @@ _BADGES_QUERY = "{ badges { id name description } }"
     annotations={**_READ_ONLY_ANNOTATIONS, "title": "List mod badges (v2)"},
 )
 async def nexus_get_badges() -> str:
-    """List all badges a mod can earn (e.g. 'Top pick', 'Easy install').
-
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Static catalog - cache the result in your workflow.
+    """List all badges a mod can earn (e.g. 'Top pick', 'Easy install'). Static catalog - cache the result.
 
     Returns:
         JSON {badges: [{id, name, description}]}.
@@ -606,9 +553,7 @@ async def nexus_get_user_monthly_summary(
 ) -> str:
     """List the months a user has a monthly activity report for.
 
-    Backed by the v2 GraphQL API, which does NOT consume the v1 REST
-    rate-limit quota. Follow up with nexus_get_user_monthly_report
-    (v1) for a specific month's download/upload numbers.
+    Follow up with nexus_get_user_monthly_report (v1) for a specific month's download/upload numbers.
 
     Returns:
         JSON {userId, entries: [{month, year}]}.

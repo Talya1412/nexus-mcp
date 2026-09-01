@@ -92,8 +92,7 @@ async def nexus_get_current_warnings() -> str:
     """Get the current user's unread moderation warnings and global notices (v2 GraphQL).
 
     Returns:
-        JSON {unreadWarnings: [{id, category, date, isRead, link, publicReason, reason,
-        postId, removedDate, removedReason}], unreadGlobalNotices: [{content, date}]}.
+        JSON {unreadWarnings: [{id, category, date, isRead, link, publicReason, reason, postId, removedDate, removedReason}], unreadGlobalNotices: [{content, date}]}.
     """
     return await _gql_call(
         "query { currentWarnings { unreadWarnings { id category date isRead link publicReason reason postId removedDate removedReason staff { memberId name } user { memberId name } } unreadGlobalNotices { content date staff { memberId name } } } }"
@@ -182,7 +181,6 @@ async def nexus_get_legacy_mods(
 
     Returns:
         JSON {totalCount, _returned, nodes: [mod objects]}.
-        Paginate with offset += _returned.
     """
     parsed: list[dict[str, Any]] = []
     for pair in _split_ids(ids):
@@ -293,16 +291,10 @@ async def nexus_search_media(
 ) -> str:
     """Search site-wide media (images, supporter images, videos) via v2 GraphQL.
 
-    NOTE: this endpoint is SERVER-SIDE FLAKY - it intermittently fails
-    with GraphQL "A name ... was not found" errors regardless of filter
-    combination. Identical calls often succeed on retry; just retry.
-    (An adultContent filter was deliberately removed: that filter
-    consistently errors server-side for both True and False.)
+    NOTE: server-side flaky - intermittently fails with GraphQL "A name ... was not found" errors regardless of filters; retries often succeed. adultContent filter removed upstream (errors for both True/False).
 
     Returns:
-        JSON {totalCount, _returned, nodes: [...]}. Nodes are a union (Image,
-        SupporterImage, Video) discriminated by __typename.
-        Paginate with offset += _returned.
+        JSON {totalCount, _returned, nodes: [...]} union (Image, SupporterImage, Video) via __typename.
     """
     flt: dict[str, Any] = {}
     if _opt(general_search) is not None:
@@ -423,13 +415,10 @@ async def nexus_get_transactions(
 ) -> str:
     """Get Donation Points transactions for the current user (v2 GraphQL).
 
-    NOTE: Nexus hides the data under apikey-only auth ("hidden due to
-    permissions"). Requires OAuth login (nexus_oauth_login +
-    nexus_oauth_exchange); the tool surfaces the error otherwise.
+    OAuth required (nexus_oauth_login + nexus_oauth_exchange); Nexus hides the data under apikey-only auth ("hidden due to permissions") - API-side restriction, not a tool failure.
 
     Returns:
-        JSON {totalCount, filteredCount, transactions: [{id, type, label, amount,
-        createdAt, creditorEntity, debitorEntity}]}.
+        JSON {totalCount, filteredCount, transactions: [{id, type, label, amount, createdAt, creditorEntity, debitorEntity}]}.
     """
     return await _gql_call(
         "query($s: Int, $p: Int, $od: String, $oc: String, $a: Int, $b: Int, $q: String) { transactions(start: $s, perPage: $p, orderDir: $od, orderColumn: $oc, accountId: $a, bankId: $b, search: $q) { totalCount filteredCount transactions { id type label amount createdAt creditorEntity { id label type } debitorEntity { id label type } } } }",
@@ -459,8 +448,7 @@ async def nexus_get_uploads(
     """List mod file uploads with scan status (v2 GraphQL).
 
     Returns:
-        JSON {totalCount, filteredCount, uploads: [{id, status, uploadType, md5,
-        sha256, virusTotalStatus, ...}]}.
+        JSON {totalCount, filteredCount, uploads: [{id, status, uploadType, md5, sha256, virusTotalStatus, ...}]}.
     """
     return await _gql_call(
         "query($s: Int!, $p: Int!, $oc: String!, $od: String!, $id: String, $q: String, $f: String, $ut: String, $g: Int, $u: Int, $fi: Int, $m: Int) { uploads(start: $s, perPage: $p, orderColumn: $oc, orderDir: $od, id: $id, search: $q, filter: $f, uploadType: $ut, gameId: $g, userId: $u, fileId: $fi, modId: $m) { totalCount filteredCount uploads { id status uploadType createdAt updatedAt tempFileName s3Url s3UploadComplete md5 sha256 sizeBytes fileId modId claimed chunksCurrent chunksTotal internalVirusScanStatus virusTotalStatus virusTotalPositives virusTotalUrl lastError processingEngine } } }",
@@ -478,8 +466,7 @@ async def nexus_get_user_donation_preferences() -> str:
     """Get the current user's Donation Points donation preferences (v2 GraphQL).
 
     Returns:
-        JSON {donateStraight, donateProfile, donateAuthorpremium, donateOwnpremium,
-        donatePremiumMax, paypal}. Edit with nexus_update_user_donation_preferences.
+        JSON {donateStraight, donateProfile, donateAuthorpremium, donateOwnpremium, donatePremiumMax, paypal}. Edit with nexus_update_user_donation_preferences.
     """
     return await _gql_call(
         "query { userDonationPreferences { id donateStraight donateProfile donateAuthorpremium donateOwnpremium donatePremiumMax paypal } }"
@@ -496,13 +483,10 @@ async def nexus_get_user_monthly_report_by_id(
 ) -> str:
     """Get one monthly Donation Points report by report ID (v2 GraphQL).
 
-    NOTE: Nexus hides this report for privacy-restricted accounts
-    ("hidden due to permissions") - an API-side restriction, not a
-    tool failure.
+    NOTE: Hidden for privacy-restricted accounts ("hidden due to permissions") - API-side restriction, not a tool failure.
 
     Returns:
-        JSON {userId, entries: [{reportId, year, month, value, status, ratio,
-        authorId, authorValue, gameId, modId, modCount, modValue, authorCount}]}.
+        JSON {userId, entries: [{reportId, year, month, value, status, ratio, authorId, authorValue, gameId, modId, modCount, modValue, authorCount}]}.
     """
     return await _gql_call(
         "query($a: Int!, $r: Int!) { userMonthlyReportById(accountId: $a, reportId: $r) { userId entries { reportId year month value status ratio authorId authorValue gameId modId modCount modValue authorCount } } }",

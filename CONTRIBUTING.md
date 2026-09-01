@@ -47,12 +47,19 @@ tests/
    when misuse can cause real damage (deletion, moderation, irreversible actions).
 3. Every tool needs a Google-style docstring with a `Returns:` section — the
    registry tests enforce that tools are documented.
-4. `domain_name` parameters must reuse the `DOMAIN_DESC` wording (lowercase slug,
+4. **Docstrings are agent-facing token budget**: every tool description is loaded
+   into the context of every agent session. Keep them compact — one-sentence
+   description, at most one line of point-of-use constraints, and a one-line
+   `Returns:` shape. Target ≤300 chars; hard cap 450. Quota/TTL boilerplate
+   belongs in the server instructions (`_server.py`), not per-tool.
+5. Tool-facing JSON must be compact: `json.dumps(..., separators=(",", ":"))` —
+   no `indent=2` in tool outputs (pretty-printing inflates every response).
+6. `domain_name` parameters must reuse the `DOMAIN_DESC` wording (lowercase slug,
    not display name).
-5. **Tool count matters**: `tests/test_registry.py` and the release workflow's
+7. **Tool count matters**: `tests/test_registry.py` and the release workflow's
    smoke test assert exactly `135` tools. If your change adds or removes a tool,
    update both assertions in the same PR.
-6. Add tests. Network calls go through `httpx.MockTransport` in tests — the suite
+8. Add tests. Network calls go through `httpx.MockTransport` in tests — the suite
    must stay offline. The live-smoke CI job is the only place real API calls happen.
 
 ## Tests and CI

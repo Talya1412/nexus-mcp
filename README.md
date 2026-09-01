@@ -14,6 +14,10 @@ checksum verification, manage endorsements, comments, collections, and user pref
 
 ## Highlights
 
+- **Agent-optimized token budget** — compact one-pass tool descriptions (~60% smaller
+  than raw API docs), compact JSON responses, and server-level instructions that state
+  quota strategy, pagination (`offset += _returned`), and error conventions once —
+  so agents spend context on the task, not on boilerplate.
 - **Full API coverage** — 69 read tools + 66 mutations across v1 REST and v2 GraphQL.
   Includes things v1 doesn't offer: free-text mod search, batch mod lookups, comment
   threads, collection lifecycle, and quota-free GraphQL reads.

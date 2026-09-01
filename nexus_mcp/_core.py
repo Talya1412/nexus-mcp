@@ -36,7 +36,7 @@ from pydantic.fields import FieldInfo
 API_BASE = "https://api.nexusmods.com"
 GRAPHQL_PATH = "/v2/graphql"
 APP_NAME = "nexus-mcp"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.3.0"
 __version__ = APP_VERSION
 
 RL_HEADERS = [
@@ -421,9 +421,9 @@ async def _request(
 
 
 def _dump(payload: Any, rl: dict[str, str]) -> str:
-    """Serialize a payload with a compact rate-limit snapshot appended."""
+    """Serialize a payload compactly (agent token budget) with a rate-limit snapshot."""
     body: Any = {**payload, "_rl": rl} if isinstance(payload, dict) else {"result": payload, "_rl": rl}
-    return json.dumps(body, indent=2, ensure_ascii=False)
+    return json.dumps(body, separators=(",", ":"), ensure_ascii=False)
 
 
 async def _call(
@@ -553,7 +553,7 @@ def _gql_page(data: str, root: str) -> str:
     page = parsed.get(root) if isinstance(parsed, dict) else None
     if isinstance(page, dict) and "totalCount" in page:
         nodes = page.get("nodes") or []
-        return json.dumps({**page, "nodes": nodes, "_returned": len(nodes)}, indent=2, ensure_ascii=False)
+        return json.dumps({**page, "nodes": nodes, "_returned": len(nodes)}, separators=(",", ":"), ensure_ascii=False)
     return data
 
 

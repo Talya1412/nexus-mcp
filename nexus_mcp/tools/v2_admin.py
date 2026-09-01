@@ -35,7 +35,7 @@ async def nexus_update_about_me(
     about: str = Field(..., description="New About Me text.", min_length=1),
     user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
-    """Update a user's About Me profile text via v2 GraphQL.
+    """Update a user's About Me profile text.
 
     Returns:
         JSON {success} or an error string.
@@ -51,7 +51,7 @@ async def nexus_update_country(
     country: str | None = Field(default=None, description="Country name/code. Omit to clear."),
     user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
-    """Update a user's country via v2 GraphQL.
+    """Update a user's country.
 
     Returns:
         JSON {success} or an error string.
@@ -91,10 +91,9 @@ async def nexus_update_preferences(
     subfeeds_activity_tracked: bool | None = Field(default=None, description="Subfeed: activity on tracked content."),
     subfeeds_author_tracked: bool | None = Field(default=None, description="Subfeed: tracked authors."),
 ) -> str:
-    """Update the current user's site preferences via v2 GraphQL.
+    """Update the current user's site preferences.
 
-    Only the provided fields are changed; omitted fields stay as-is.
-    Read current values with nexus_get_preferences.
+    Partial update: omitted fields unchanged; read current values with nexus_get_preferences.
 
     Returns:
         JSON {success} or an error string.
@@ -147,9 +146,9 @@ async def nexus_update_user_donation_preferences(
     dp_opted_in: bool | None = Field(default=None, description="Opt your mods into Donation Points."),
     paypal: str | None = Field(default=None, description="PayPal address for payouts."),
 ) -> str:
-    """Update the current user's Donation Points preferences via v2 GraphQL.
+    """Update the current user's Donation Points preferences.
 
-    Only the provided fields are changed; omitted fields stay as-is.
+    Partial update: omitted fields unchanged.
 
     Returns:
         JSON {success, userDonationPreferences: {...}} or an error string.
@@ -176,7 +175,7 @@ async def nexus_create_message(
     title: str = Field(..., description="Message title.", min_length=1),
     body: str = Field(..., description="Message body (plain text).", min_length=1),
 ) -> str:
-    """Send a private message to one or more users via v2 GraphQL.
+    """Send a private message to one or more users.
 
     Returns:
         JSON {success} or an error string.
@@ -203,7 +202,7 @@ async def nexus_close_collection_bug_report(
     bug_report_id: int = Field(..., description="Bug report ID.", ge=1),
     closure_reason: Literal["none", "resolved", "not_a_bug", "wont_fix"] = Field(..., description="Closure reason."),
 ) -> str:
-    """Close a bug report on your collection via v2 GraphQL.
+    """Close a bug report on your collection.
 
     Returns:
         JSON {collectionBugReport: {id, status, closureReason, closedAt}}.
@@ -219,7 +218,7 @@ async def nexus_submit_moderation_fix(
     moderation_id: int = Field(..., description="Moderation ID to fix.", ge=1),
     description: str | None = Field(default=None, description="Description of the fix."),
 ) -> str:
-    """Submit a fix for an active moderation on your content (v2 GraphQL).
+    """Submit a fix for an active moderation on your content.
 
     Returns:
         JSON {success, moderationFix: {id, status, description, createdAt}}.
@@ -270,11 +269,9 @@ async def nexus_create_collection(
     collection_uuid: str | None = Field(default=None, description="Client UUID for the collection. Auto-generated if omitted."),
     collection_data_json: str | None = Field(default=None, description="Full CollectionPayload JSON overriding all other params."),
 ) -> str:
-    """Create a new collection and its first draft revision (v2 GraphQL).
+    """Create a new collection and its first draft revision.
 
-    Either build the payload from the individual params or pass the full
-    CollectionPayload JSON via collection_data_json (shape: {adultContent,
-    collectionManifest: {info: {...}, mods: [...]}, collectionSchemaId}).
+    Either pass individual params or the full CollectionPayload JSON via collection_data_json.
 
     Returns:
         JSON {success, collectionId, revisionId} or an error string.
@@ -308,9 +305,9 @@ async def nexus_edit_collection(
     allow_user_media: bool | None = Field(default=None, description="Allow user media."),
     manually_verify_media: bool | None = Field(default=None, description="Manually verify media."),
 ) -> str:
-    """Edit a collection's metadata (must own the collection) via v2 GraphQL.
+    """Edit a collection's metadata (must own the collection).
 
-    Only the provided fields are changed; omitted fields stay as-is.
+    Partial update: omitted fields unchanged.
 
     Returns:
         JSON {success, collection: {id, name, slug}} or an error string.
@@ -347,10 +344,9 @@ async def nexus_create_or_update_revision(
     collection_uuid: str | None = Field(default=None, description="Client UUID. Auto-generated if omitted."),
     collection_data_json: str | None = Field(default=None, description="Full CollectionPayload JSON overriding all other params."),
 ) -> str:
-    """Create a new draft revision or update the existing draft (v2 GraphQL).
+    """Create a new draft revision or update the existing draft.
 
-    Pass mods_json (or the full payload via collection_data_json) to replace
-    the revision's mod list; omit mods_json to keep it unchanged.
+    Pass mods_json or collection_data_json to replace the mod list; omit to keep it.
 
     Returns:
         JSON {success, collectionId, revisionId, revisionNumber} or an error string.
@@ -378,9 +374,9 @@ async def nexus_update_revision(
     installation_info: str | None = Field(default=None, description="Installation instructions."),
     adult_content: bool | None = Field(default=None, description="Whether the revision contains adult resources."),
 ) -> str:
-    """Update a collection revision's metadata (must own it) via v2 GraphQL.
+    """Update a collection revision's metadata (must own it).
 
-    Only the provided fields are changed; omitted fields stay as-is.
+    Partial update: omitted fields unchanged.
 
     Returns:
         JSON {success, revisionId} or an error string.
@@ -401,10 +397,9 @@ async def nexus_publish_revision(
     collection_status: Literal["listed", "unlisted", "under_moderation", "discarded"] | None = Field(default=None, description="Status to publish with."),
     has_adult_resources: bool | None = Field(default=None, description="Whether the revision contains adult resources."),
 ) -> str:
-    """Publish a draft collection revision (must own the collection) via v2 GraphQL.
+    """Publish a draft collection revision (must own the collection).
 
-    This makes the revision publicly available - hard to undo (use
-    nexus_retract_revision afterwards).
+    Hard to undo; use nexus_retract_revision afterwards.
 
     Returns:
         JSON {success} or an error string.
@@ -424,7 +419,7 @@ async def nexus_retract_revision(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
     reason: str = Field(..., description="Retraction reason.", min_length=1),
 ) -> str:
-    """Retract a published collection revision (must own it) via v2 GraphQL.
+    """Retract a published collection revision (must own it).
 
     Returns:
         JSON {success} or an error string.
@@ -441,7 +436,7 @@ async def nexus_discard_revision(
     revision_number: int = Field(..., description="Revision number.", ge=1),
     reason: str | None = Field(default=None, description="Discard reason."),
 ) -> str:
-    """Discard a collection revision (must own the collection) via v2 GraphQL.
+    """Discard a collection revision (must own the collection).
 
     Returns:
         JSON {success} or an error string.
@@ -459,9 +454,7 @@ async def nexus_discard_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
     reason: str = Field(..., description="Discard reason.", min_length=1),
 ) -> str:
-    """Discard (soft-delete) an entire collection (must own it) via v2 GraphQL.
-
-    DESTRUCTIVE: discards the collection. Prefer nexus_unlist_collection.
+    """Discard (soft-delete) an entire collection (must own it). Prefer nexus_unlist_collection.
 
     Returns:
         JSON {success} or an error string.
@@ -476,7 +469,7 @@ async def nexus_discard_collection(
 async def nexus_list_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
 ) -> str:
-    """List (publish) a currently unlisted collection (must own it) via v2 GraphQL.
+    """List (publish) a currently unlisted collection (must own it).
 
     Returns:
         JSON {success} or an error string.
@@ -491,7 +484,7 @@ async def nexus_list_collection(
 async def nexus_unlist_collection(
     collection_id: int = Field(..., description="Collection ID.", ge=1),
 ) -> str:
-    """Unlist a collection (hide from public listings, keep URL) via v2 GraphQL.
+    """Unlist a collection (hidden from listings, URL kept).
 
     Returns:
         JSON {success} or an error string.
@@ -507,7 +500,7 @@ async def nexus_create_changelog(
     revision_id: int = Field(..., description="Revision ID.", ge=1),
     description: str = Field(..., description="Changelog text.", min_length=1),
 ) -> str:
-    """Create a changelog entry for a collection revision (must own it) via v2 GraphQL.
+    """Create a changelog entry for a collection revision (must own it).
 
     Returns:
         JSON {success, changelogId} or an error string.
@@ -523,7 +516,7 @@ async def nexus_update_changelog(
     changelog_id: int = Field(..., description="Changelog ID.", ge=1),
     description: str = Field(..., description="New changelog text.", min_length=1),
 ) -> str:
-    """Update an existing changelog entry (must own it) via v2 GraphQL.
+    """Update an existing changelog entry (must own it).
 
     Returns:
         JSON {success, changelogId} or an error string.
@@ -547,7 +540,7 @@ async def nexus_create_tag(
     global_tag: bool | None = Field(default=None, description="Create as global tag."),
     adult: bool | None = Field(default=None, description="Adult content tag."),
 ) -> str:
-    """Create a new tag (moderator permissions may be required) via v2 GraphQL.
+    """Create a new tag (moderator permissions may be required).
 
     Returns:
         JSON {success, tag: {id, name}} or an error string.
@@ -575,9 +568,9 @@ async def nexus_update_tag(
     global_tag: bool | None = Field(default=None, description="Mark as global tag."),
     adult: bool | None = Field(default=None, description="Adult content tag."),
 ) -> str:
-    """Update an existing tag (moderator permissions may be required) via v2 GraphQL.
+    """Update an existing tag (moderator permissions may be required).
 
-    Only the provided fields are changed; omitted fields stay as-is.
+    Partial update: omitted fields unchanged.
 
     Returns:
         JSON {success, tag: {id, name}} or an error string.
@@ -600,7 +593,7 @@ async def nexus_update_tag(
 async def nexus_discard_tag(
     tag_id: int = Field(..., description="Tag ID.", ge=1),
 ) -> str:
-    """Discard (soft-delete) a tag (moderator permissions may be required) via v2 GraphQL.
+    """Discard (soft-delete) a tag (moderator permissions may be required).
 
     Returns:
         JSON {success} or an error string.
@@ -619,7 +612,7 @@ async def nexus_add_badge_to_collection(
     badge_id: int = Field(..., description="Badge ID (see nexus_get_badges).", ge=1),
     collection_id: int = Field(..., description="Collection ID.", ge=1),
 ) -> str:
-    """Award a badge to a collection (moderator permissions required) via v2 GraphQL.
+    """Award a badge to a collection (moderator permissions required).
 
     Returns:
         JSON {success} or an error string.
@@ -638,7 +631,7 @@ async def nexus_remove_badge_from_collection(
     badge_id: int = Field(..., description="Badge ID (see nexus_get_badges).", ge=1),
     collection_id: int = Field(..., description="Collection ID.", ge=1),
 ) -> str:
-    """Remove a badge from a collection (moderator permissions required) via v2 GraphQL.
+    """Remove a badge from a collection (moderator permissions required).
 
     Returns:
         JSON {success} or an error string.
@@ -655,9 +648,7 @@ async def nexus_reorder_item(
     target_id: int = Field(..., description="ID of the item to position relative to.", ge=1),
     location: Literal["BEFORE", "AFTER"] = Field(..., description="Position relative to target."),
 ) -> str:
-    """Reorder reorderable items (collection images/videos) via v2 GraphQL.
-
-    Requires ownership of the parent collection.
+    """Reorder collection images/videos (requires ownership of the parent collection).
 
     Returns:
         JSON {item: {__typename}} or an error string.
@@ -679,7 +670,7 @@ async def nexus_hide_comment(
     reason: str = Field(..., description="Public reason for hiding.", min_length=1),
     internal_reason: str | None = Field(default=None, description="Internal reason (moderators only)."),
 ) -> str:
-    """Hide a comment (moderator permissions required) via v2 GraphQL.
+    """Hide a comment (moderator permissions required).
 
     Returns:
         JSON {comment: {id}} or an error string.
@@ -694,7 +685,7 @@ async def nexus_hide_comment(
 async def nexus_lock_comment(
     comment_id: int = Field(..., description="Comment ID to lock.", ge=1),
 ) -> str:
-    """Lock a comment against further interaction (moderator permissions) via v2 GraphQL.
+    """Lock a comment against further interaction (moderator permissions).
 
     Returns:
         JSON {comment: {id}} or an error string.
@@ -709,7 +700,7 @@ async def nexus_lock_comment(
 async def nexus_lock_comment_thread(
     comment_thread_id: int = Field(..., description="Comment thread ID to lock.", ge=1),
 ) -> str:
-    """Lock a comment thread (e.g. a mod's comments page) via v2 GraphQL.
+    """Lock a comment thread (e.g. a mod's comments page).
 
     Requires moderator permissions or thread ownership.
 
@@ -726,7 +717,7 @@ async def nexus_lock_comment_thread(
 async def nexus_pin_comment(
     comment_id: int = Field(..., description="Comment ID to pin.", ge=1),
 ) -> str:
-    """Pin a comment to the top of its thread via v2 GraphQL.
+    """Pin a comment to the top of its thread.
 
     Requires moderator permissions or thread ownership.
 
@@ -743,7 +734,7 @@ async def nexus_pin_comment(
 async def nexus_unpin_comment(
     comment_id: int = Field(..., description="Comment ID to unpin.", ge=1),
 ) -> str:
-    """Unpin a previously pinned comment via v2 GraphQL.
+    """Unpin a previously pinned comment.
 
     Requires moderator permissions or thread ownership.
 
@@ -763,7 +754,7 @@ async def nexus_unpin_comment(
 async def nexus_reorder_pinned_comments(
     comment_ids: str = Field(..., description="Comma-separated pinned comment IDs in the desired order."),
 ) -> str:
-    """Reorder pinned comments in a thread via v2 GraphQL.
+    """Reorder pinned comments in a thread.
 
     Pass ALL pinned comment IDs of the thread in the desired order.
 
@@ -786,7 +777,7 @@ async def nexus_reorder_pinned_comments(
 async def nexus_clear_comment_moderation_status(
     comment_id: int = Field(..., description="Comment ID.", ge=1),
 ) -> str:
-    """Clear a comment's moderation status (moderator permissions) via v2 GraphQL.
+    """Clear a comment's moderation status (moderator permissions).
 
     Returns:
         JSON {comment: {id}} or an error string.
@@ -804,7 +795,7 @@ async def nexus_clear_comment_moderation_status(
 async def nexus_clear_comment_thread_moderation_status(
     comment_thread_id: int = Field(..., description="Comment thread ID.", ge=1),
 ) -> str:
-    """Clear a comment thread's moderation status (moderator permissions) via v2 GraphQL.
+    """Clear a comment thread's moderation status (moderator permissions).
 
     Returns:
         JSON {commentThread: {id}} or an error string.
@@ -828,7 +819,7 @@ async def nexus_track_app_metric(
     client_string: str | None = Field(default=None, description="Client identifier string."),
     metadata_json: str | None = Field(default=None, description="Optional JSON metadata object."),
 ) -> str:
-    """Report an app metric (e.g. a Vortex collection install event) via v2 GraphQL.
+    """Report an app metric (e.g. a Vortex collection install event).
 
     Returns:
         JSON {success, errors} or an error string.
@@ -852,9 +843,9 @@ async def nexus_track_app_metric(
 async def nexus_block_mods_from_earning_dp(
     user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
-    """Block a user's mods from earning Donation Points via v2 GraphQL.
+    """Block a user's mods from earning Donation Points.
 
-    Requires moderator permissions when targeting another user.
+    Moderator permissions required when targeting another user.
 
     Returns:
         JSON {success} or an error string.
@@ -872,9 +863,9 @@ async def nexus_block_mods_from_earning_dp(
 async def nexus_unblock_mods_from_earning_dp(
     user_id: int | None = Field(default=None, description="User ID. Omit for the current user."),
 ) -> str:
-    """Unblock a user's mods from earning Donation Points via v2 GraphQL.
+    """Unblock a user's mods from earning Donation Points.
 
-    Requires moderator permissions when targeting another user.
+    Moderator permissions required when targeting another user.
 
     Returns:
         JSON {success} or an error string.
@@ -891,10 +882,9 @@ async def nexus_upload_attachment(
     content_base64: str = Field(..., description="Base64-encoded file content.", min_length=1),
     mime_type: str = Field(default="application/octet-stream", description="MIME type."),
 ) -> str:
-    """Upload an attachment (usable in comments) via the v2 GraphQL multipart spec.
+    """Upload a base64-encoded attachment (usable in comments).
 
-    Accepts base64-encoded content and posts it as an Apollo Upload multipart
-    request. Attachments can then be referenced by id in comment mutations.
+    Reference the returned id in comment mutations.
 
     Returns:
         JSON {attachment: {id, filename, url}} or an error string.
@@ -924,7 +914,7 @@ async def nexus_upload_attachment(
     except (httpx.HTTPError, ValueError, OSError) as exc:
         return f"Error: upload failed: {type(exc).__name__}: {exc}"
     if response.status_code != 200 or payload.get("errors"):
-        errors = json.dumps(payload.get("errors") or payload)[:500]
+        errors = json.dumps(payload.get("errors") or payload, separators=(",", ":"))[:500]
         return f"Error: HTTP {response.status_code} {errors}"
     data = payload.get("data") or {}
-    return json.dumps(data, indent=2, ensure_ascii=False)
+    return json.dumps(data, separators=(",", ":"), ensure_ascii=False)

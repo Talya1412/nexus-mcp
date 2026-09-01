@@ -16,6 +16,10 @@ mcp = FastMCP(
         "- Auth: NEXUS_API_KEY covers all public reads and most mutations. Some user-context mutations "
         "require OAuth (nexus_oauth_login then nexus_oauth_exchange) - e.g. nexus_update_mod_direct_download, "
         "nexus_restore_comment, nexus_get_transactions. Tool descriptions flag this where it applies.\n"
+        "- Pagination: list tools return {totalCount, _returned, nodes}; paginate with offset += _returned "
+        "while offset < totalCount. Page size may be silently capped by the server - always check _returned.\n"
+        "- Responses are compact JSON; parse with a JSON parser (do not regex text). Tool failures come "
+        "back as 'Error: ...' strings, not exceptions - read the message and adjust inputs.\n"
         "- Tools carry readOnly/destructive/idempotent annotations; treat destructive tools as "
         "user-confirm-worthy."
     ),

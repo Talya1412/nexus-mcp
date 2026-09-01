@@ -41,16 +41,10 @@ async def nexus_get_files_by_uid(
 ) -> str:
     """Get mod file lists by mod UID(s) via v2 GraphQL - no domain/modId pair needed.
 
-    Ideal when you only have the uid (e.g. from a .nxm link or your own mod
-    pipeline). Backed by the v2 GraphQL API, which does NOT consume the v1
-    REST rate-limit quota.
-    NOTE: the response does NOT include domainName/modId - resolve the
-    owning game/mod separately (e.g. nexus_search_by_md5) before calling
-    the download tools.
+    Response lacks domainName/modId - resolve the owning game/mod separately (e.g. nexus_search_by_md5) before download tools.
 
     Returns:
-        JSON {totalFiles, _returned, files: [{fileId, name, version, category,
-        sizeInBytes, totalDownloads, date, description}]}.
+        JSON {totalFiles, _returned, files: [{fileId, name, version, category, sizeInBytes, totalDownloads, date, description}]}.
     """
     ids: list[str] = []
     bad: list[str] = []
@@ -63,7 +57,7 @@ async def nexus_get_files_by_uid(
         else:
             bad.append(chunk)
     if bad:
-        return json.dumps({"error": "Invalid uids (expected numeric strings):", "entries": bad}, indent=2)
+        return json.dumps({"error": "Invalid uids (expected numeric strings):", "entries": bad}, separators=(",", ":"))
     if not ids:
         return "Error: provide at least one numeric mod UID."
     data = await _gql_call(_MOD_FILES_BY_UID_QUERY, {"uids": ids, "offset": offset, "count": count})
@@ -76,7 +70,7 @@ async def nexus_get_files_by_uid(
         nodes = root.get("nodes") or []
         return json.dumps(
             {"totalFiles": root.get("totalCount", len(nodes)), "_returned": len(nodes), "files": nodes},
-            indent=2,
+            separators=(",", ":"),
             ensure_ascii=False,
         )
     return data
@@ -89,11 +83,8 @@ async def nexus_get_files_by_uid(
 async def nexus_get_favourite_games() -> str:
     """Get the authenticated user's favourite games via v2 GraphQL.
 
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
-
     Returns:
-        JSON array of games: {id, name, domainName, genre, modCount,
-        collectionCount}.
+        JSON array of games: {id, name, domainName, genre, modCount, collectionCount}.
     """
     return await _gql_call("query { favouriteGames { id name domainName genre modCount collectionCount } }")
 
@@ -104,8 +95,6 @@ async def nexus_get_favourite_games() -> str:
 )
 async def nexus_get_ignored_users() -> str:
     """Get the current user's ignored (muted) users via v2 GraphQL.
-
-    Consumes the v2 GraphQL pool, NOT the v1 REST rate-limit quota.
 
     Returns:
         JSON array of users: {memberId, name, avatar, viewerHasIgnored}.
@@ -120,10 +109,7 @@ async def nexus_ignore_user(
 ) -> str:
     """Ignore (mute) a user via v2 GraphQL - hides their content in your feed.
 
-    Personal preference only: no public side effect. Reversible with
-    nexus_unignore_user. Provide user_id OR username (at least one).
-    NOTE: applies immediately but list reads (nexus_get_ignored_users)
-    can lag several seconds - wait before re-reading to confirm.
+    Personal preference only; reversible with nexus_unignore_user. Provide user_id OR username. List reads (nexus_get_ignored_users) may lag a few seconds.
 
     Returns:
         JSON {ignoreUser: {success}} or an error string.
@@ -147,10 +133,7 @@ async def nexus_unignore_user(
 ) -> str:
     """Stop ignoring (unmute) a user via v2 GraphQL.
 
-    Personal preference only: no public side effect. Provide user_id OR
-    username (at least one).
-    NOTE: applies immediately but list reads (nexus_get_ignored_users)
-    can lag several seconds - wait before re-reading to confirm.
+    Personal preference only. Provide user_id OR username. List reads (nexus_get_ignored_users) may lag a few seconds.
 
     Returns:
         JSON {unignoreUser: {success}} or an error string.
@@ -176,8 +159,7 @@ async def nexus_get_blocked_tags(
 ) -> str:
     """Get the current user's blocked tags via v2 GraphQL.
 
-    Blocked tags hide matching mods/collections from your searches. Find tag
-    IDs with nexus_get_tags / nexus_search_mods.
+    Blocked tags hide matching mods/collections from your searches; find tag IDs with nexus_get_tags / nexus_search_mods.
 
     Returns:
         JSON array of tags: {id, name, global, blockable, searchable, parentId}.
@@ -196,11 +178,7 @@ async def nexus_block_tag(
 ) -> str:
     """Block a tag for the current user via v2 GraphQL - hides matching content.
 
-    Personal preference only: no public side effect. Reversible with
-    nexus_unblock_tag. Only blockable tags can be blocked.
-    NOTE: preference mutations apply immediately but list reads
-    (nexus_get_blocked_tags) can lag several seconds - wait before
-    re-reading to confirm.
+    Personal preference only; reversible with nexus_unblock_tag; only blockable tags. List reads (nexus_get_blocked_tags) may lag a few seconds.
 
     Returns:
         JSON {blockTag: {success}} or an error string.
@@ -217,9 +195,7 @@ async def nexus_unblock_tag(
 ) -> str:
     """Unblock a previously blocked tag via v2 GraphQL.
 
-    Personal preference only: no public side effect. List reads
-    (nexus_get_blocked_tags) can lag several seconds after this
-    returns success - wait before re-reading to confirm.
+    List reads (nexus_get_blocked_tags) may lag a few seconds after this returns success.
 
     Returns:
         JSON {unblockTag: {success}} or an error string.
@@ -239,13 +215,10 @@ async def nexus_get_user_by_name(
 ) -> str:
     """Get a user profile by exact username via v2 GraphQL.
 
-    Unlike nexus_search_users (fuzzy), this resolves one exact username and
-    fails cleanly when nobody has it. Useful to convert a username to a
-    memberId for the user mutation tools.
+    Unlike nexus_search_users (fuzzy); fails cleanly when nobody has it. Useful to convert a username to a memberId.
 
     Returns:
-        JSON user object {memberId, name, avatar, modCount, kudos, joined, ...}
-        or {userByName: null} when the username does not exist.
+        JSON user object {memberId, name, avatar, modCount, kudos, joined, ...} or {userByName: null} when the username does not exist.
     """
     return await _gql_call(
         "query($n: String!) { userByName(name: $n) { memberId name avatar about country joined lastActive "
@@ -266,16 +239,10 @@ async def nexus_get_user_monthly_report(
 ) -> str:
     """Get the download/upload numbers for ONE specific month via v2 GraphQL.
 
-    Companion to nexus_get_user_monthly_summary (which lists available
-    months): this fetches the actual per-mod/per-game values for a chosen
-    month. Useful for tracking your own mod's download history.
-    NOTE: Nexus hides this report for privacy-restricted accounts
-    ("UserMonthlyReport was hidden due to permissions") - that is an
-    API-side restriction, not a tool failure.
+    Companion to nexus_get_user_monthly_summary. Nexus hides this report for privacy-restricted accounts - API-side restriction, not a tool failure.
 
     Returns:
-        JSON {userMonthlyReport: {userId, reportType, entries: [{month, year,
-        value, status, ratio, modId, gameId, authorId, ...}]}}.
+        JSON {userMonthlyReport: {userId, reportType, entries: [{month, year, value, status, ratio, modId, gameId, authorId, ...}]}}.
     """
     return await _gql_call(
         "query($a: Int!, $y: Int!, $m: Int!) { userMonthlyReport(accountId: $a, year: $y, month: $m) "
@@ -291,8 +258,7 @@ async def nexus_get_user_monthly_report(
 async def nexus_get_speedtest_urls() -> str:
     """Get CDN speedtest URLs to diagnose download issues via v2 GraphQL.
 
-    Handy when downloads feel slow: test latency/throughput against each
-    mirror and compare. Consumes the v2 GraphQL pool.
+    Test latency/throughput against each mirror and compare.
 
     Returns:
         JSON array of {title, description, location, tag}.

@@ -98,8 +98,7 @@ async def nexus_oauth_exchange(
 
     Exchanges via PKCE code_verifier (+ client_secret when configured), saves
     tokens to the token file, and validates the identity with the resulting
-    Bearer token. Tokens auto-refresh; any 4xx refresh response is treated as
-    revocation per the official guide.
+    Bearer token. Tokens auto-refresh and are kept through transient failures.
 
     Returns:
         JSON account summary from nexus_validate_key, or an error string.

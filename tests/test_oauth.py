@@ -48,7 +48,19 @@ class TestAuthHeaders:
         assert headers == {"Authorization": "Bearer new-access"}
         saved = core._load_oauth_tokens()
         assert saved["access_token"] == "new-access"
+        assert saved["refresh_token"] == "rt-2"
         assert saved["expires_at"] > time.time()
+
+    def test_refresh_reply_can_omit_a_replacement_refresh_token(self, monkeypatch):
+        _write_tokens()
+
+        async def fake_token_request(form):
+            assert form["refresh_token"] == "rt-1"
+            return {"access_token": "new-access", "expires_in": 3600}
+
+        monkeypatch.setattr(core, "_oauth_token_request", fake_token_request)
+        assert run(core._auth_headers()) == {"Authorization": "Bearer new-access"}
+        assert core._load_oauth_tokens()["refresh_token"] == "rt-1"
 
     def test_revoked_app_clears_tokens_and_falls_back(self, monkeypatch):
         _write_tokens()
@@ -61,15 +73,15 @@ class TestAuthHeaders:
         assert headers == {"apikey": "test-key-123"}
         assert core._load_oauth_tokens() is None
 
-    def test_transient_refresh_failure_keeps_tokens(self, monkeypatch):
-        """A 5xx (or status-less) refresh failure must NOT log the user out."""
+    @pytest.mark.parametrize("status", [408, 429, 503])
+    def test_transient_refresh_failure_keeps_tokens(self, monkeypatch, status):
         _write_tokens()
 
         async def fake_token_request(form):
-            raise core.NexusApiError("OAuth token request failed: HTTP 503", status=503)
+            raise core.NexusApiError(f"OAuth token request failed: HTTP {status}", status=status)
 
         monkeypatch.setattr(core, "_oauth_token_request", fake_token_request)
-        with pytest.raises(core.NexusApiError, match="503"):
+        with pytest.raises(core.NexusApiError, match=str(status)):
             run(core._auth_headers())
         saved = core._load_oauth_tokens()
         assert saved is not None

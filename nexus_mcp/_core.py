@@ -201,9 +201,8 @@ _REFRESH_LOCK = asyncio.Lock()
 async def _oauth_refresh(tokens: dict[str, Any]) -> dict[str, Any] | None:
     """Refresh the access token (single-flight). Returns new tokens, or None if revoked.
 
-    Only 4xx replies count as revocation (tokens cleared) - transient failures
-    (5xx, non-JSON, network) keep the tokens and surface the error, so a flaky
-    connection can never log the user out.
+    Permanent 4xx replies clear the tokens. Timeouts, rate limits, and
+    server or network failures preserve them and surface the error.
     """
     async with _REFRESH_LOCK:
         fresh = _load_oauth_tokens()  # another request may have refreshed while we waited
@@ -222,12 +221,13 @@ async def _oauth_refresh(tokens: dict[str, Any]) -> dict[str, Any] | None:
         try:
             reply = await _oauth_token_request(form)
         except NexusApiError as exc:
-            if exc.status is not None and 400 <= exc.status < 500:
-                # Per the official guide, a 4xx on refresh means the user revoked the app
+            if exc.status is not None and 400 <= exc.status < 500 and exc.status not in (408, 429):
                 _clear_oauth_tokens()
                 return None
             raise  # transient failure - keep tokens
         new_tokens = _tokens_from_reply(reply)
+        if not new_tokens["refresh_token"]:
+            new_tokens["refresh_token"] = refresh_token
         _save_oauth_tokens(new_tokens)
         return new_tokens
 
